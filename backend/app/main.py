@@ -15,6 +15,8 @@ from app.api.eligibility import router as eligibility_router
 from app.api.health import router as health_router
 from app.api.intent import router as intent_router
 from app.api.knowledge import router as knowledge_router
+from app.api.roadmaps import router as roadmaps_router
+from app.api.workflows import router as workflows_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.database.connection import close_db
@@ -67,6 +69,8 @@ def create_application() -> FastAPI:
     application.include_router(chat_router, prefix=settings.api_prefix)
     application.include_router(eligibility_router, prefix=settings.api_prefix)
     application.include_router(knowledge_router, prefix=settings.api_prefix)
+    application.include_router(roadmaps_router, prefix=settings.api_prefix)
+    application.include_router(workflows_router, prefix=settings.api_prefix)
 
     # Root endpoint
     @application.get("/", tags=["root"])

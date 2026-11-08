@@ -35,6 +35,17 @@ from app.services.knowledge.provider import get_fixture_provider
 from app.services.orchestrator.orchestrator import SarkarSetuOrchestrator
 from app.services.ownership import OwnershipService
 
+# Person 2 RAG subsystem integration (optional hard dependency).
+# Falls back to the fixture provider when rag/ is not on the path or its
+# dependencies are missing, so the backend keeps starting in dev.
+try:  # noqa: E401
+    from rag.integration.knowledge_provider import RagKnowledgeProvider
+
+    _RAG_PROVIDER_AVAILABLE = True
+except Exception:  # pragma: no cover - backend runs without rag/ deps
+    RagKnowledgeProvider = None  # type: ignore[assignment,misc]
+    _RAG_PROVIDER_AVAILABLE = False
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -84,10 +95,15 @@ async def get_agent_registry(
         registry=registry,
         evaluator=RuleEvaluator(),
     )
-    # Wire up the knowledge retrieval provider
-    knowledge_provider = get_fixture_provider(
-        enabled=settings.knowledge_retrieval_enabled
-    )
+    # Wire up the knowledge retrieval provider.
+    # Prefer Person 2's RAG-backed GovernmentKnowledgeProvider; fall back to
+    # the fixture provider when the RAG subsystem is unavailable.
+    if _RAG_PROVIDER_AVAILABLE and RagKnowledgeProvider is not None:
+        knowledge_provider = RagKnowledgeProvider()
+    else:
+        knowledge_provider = get_fixture_provider(
+            enabled=settings.knowledge_retrieval_enabled
+        )
     return AgentRegistry(
         ai_service=ai_service,
         retrieval_provider=knowledge_provider,

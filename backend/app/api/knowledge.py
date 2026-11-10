@@ -1,7 +1,6 @@
 """Knowledge retrieval API router.
 
 Provides authenticated endpoints for government knowledge retrieval:
-
 - POST /api/v1/knowledge/search - Search government knowledge base
 """
 
@@ -10,22 +9,40 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.dependencies import get_current_active_user
+from app.core.config import settings
 from app.models.user import User
 from app.schemas.orchestrator import (
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     RetrievalSourceResponse,
 )
-from app.services.knowledge.provider import FixtureKnowledgeProvider
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 
-async def get_knowledge_provider() -> FixtureKnowledgeProvider:
-    """Dependency to get FixtureKnowledgeProvider instance."""
-    from app.core.config import settings
+# Try to import the RAG provider; fall back to fixture if unavailable
+try:
+    from rag.integration.knowledge_provider import RagKnowledgeProvider
 
-    return FixtureKnowledgeProvider(enabled=settings.knowledge_retrieval_enabled)
+    _RAG_AVAILABLE = True
+except Exception:  # pragma: no cover
+    RagKnowledgeProvider = None  # type: ignore[assignment,misc]
+    _RAG_AVAILABLE = False
+
+
+async def get_knowledge_provider():
+    """Dependency to get knowledge provider instance.
+
+    Uses RAG provider when available and enabled, otherwise falls back
+    to the fixture provider (development only).
+    """
+    if _RAG_AVAILABLE and RagKnowledgeProvider is not None and settings.knowledge_retrieval_enabled:
+        return RagKnowledgeProvider()
+
+    # Fallback to fixture provider
+    from app.services.knowledge.provider import FixtureKnowledgeProvider
+
+    return FixtureKnowledgeProvider(enabled=settings.knowledge_retrieval_dev_fixture)
 
 
 @router.post(
@@ -41,7 +58,7 @@ async def get_knowledge_provider() -> FixtureKnowledgeProvider:
 )
 async def search_knowledge(
     request: KnowledgeSearchRequest,
-    provider: FixtureKnowledgeProvider = Depends(get_knowledge_provider),
+    provider=Depends(get_knowledge_provider),
     current_user: User = Depends(get_current_active_user),
 ) -> KnowledgeSearchResponse:
     """Search the government knowledge base.
@@ -80,7 +97,7 @@ async def search_knowledge(
             query=request.query,
             results=source_responses,
             total_count=len(source_responses),
-            provider_enabled=provider.enabled,
+            provider_enabled=True,
         )
 
     except Exception as exc:  # noqa: BLE001 - safe error response

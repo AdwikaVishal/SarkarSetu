@@ -1,501 +1,816 @@
-/**
- * SarkarSetu AI — centralized API client.
- *
- * Reference implementation for the frontend (Person 3). Place this file at
- * `frontend/src/lib/api.ts` (or the equivalent location in your frontend
- * project). All backend communication goes through this client so auth,
- * base URL, error handling, and timeouts are consistent.
- *
- * Backend contract: docs/API_CONTRACT.md
- */
+// Frontend API Client
+// Centralized fetch-based client with auth, auto-refresh, error handling
+// Source: docs/AUTH_INTEGRATION.md, docs/API_CONTRACT.md
 
 import type {
+  // Auth
+  RegisterRequest,
+  LoginRequest,
+  RefreshRequest,
+  LogoutRequest,
+  TokenResponse,
+  UserResponse,
+  MeResponse,
+  // Business
+  BusinessProfileCreate,
+  BusinessProfileUpdate,
+  BusinessProfileResponse,
+  BusinessProfileListResponse,
+  BusinessStructure,
+  BusinessStage,
+  OperatingMode,
+  // Chat
   ChatMessageRequest,
   ChatMessageResponse,
+  IntentInfo,
+  ExtractedEntitySummary,
+  ResponseType,
   ConversationCreate,
   ConversationResponse,
   MessageResponse,
-  BusinessProfileCreate,
-  BusinessProfileResponse,
-  BusinessProfileUpdate,
+  ConversationMessagesResponse,
+  ConversationStatusResponse,
+  // Eligibility
+  EligibilityAssessRequest,
+  EligibilityAssessmentResponse,
+  ConditionResult,
+  AssessmentStatus,
+  EligibilityRuleSetResponse,
+  // Knowledge
   KnowledgeSearchRequest,
   KnowledgeSearchResponse,
   RetrievalSourceResponse,
-  UserRegister,
-  UserLogin,
-  TokenResponse,
-  RefreshTokenRequest,
-  RefreshTokenResponse,
-  UserMeResponse,
-  LogoutResponse,
-  EligibilityAssessmentRequest,
-  EligibilityAssessmentResponse,
+  // Roadmaps
   RoadmapGenerateRequest,
+  RoadmapRegenerateRequest,
   RoadmapResponse,
+  RoadmapListResponse,
+  RoadmapProgress,
   RoadmapDetailResponse,
+  RoadmapTaskResponse,
   RoadmapTaskUpdate,
+  TaskStatus,
+  TaskCategory,
+  TaskPriority,
+  RoadmapStatus,
+  // Workflows
   WorkflowExecutionRequest,
   WorkflowExecutionResponse,
+  WorkflowStepResult,
+  WorkflowStatus,
+  StepStatus,
   ClarificationResponse,
-} from "@/types/api"; // adjust import path to your generated/shared types
+  ResumeWorkflowRequest,
+  WorkflowServiceTypeInfo,
+  WorkflowServiceTypeResponse,
+  // AI/Intent
+  AIGenerateRequest,
+  AIGenerateResponse,
+  AIJSONRequest,
+  AIJSONResponse,
+  AIStructuredRequest,
+  AIStructuredResponse,
+  IntentClassifyRequest,
+  IntentClassifyResponse,
+  IntentExtractRequest,
+  IntentExtractResponse,
+  IntentAnalyzeRequest,
+  IntentAnalyzeResponse,
+  AIHealthResponse,
+  // Health
+  HealthResponse,
+  HealthDBResponse,
+  // Documents
+  DocumentUploadResponse,
+  DocumentResponse,
+  DocumentListResponse,
+  DocumentMatchingResponse,
+  DocumentDeleteResponse,
+  MatchingDocument,
+  // Recommendations
+  RecommendationRequest,
+  RecommendationResponse,
+  RecommendationDetail,
+  RecommendationListResponse,
+  SchemeDetail,
+} from "@/types/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-if (!API_URL) {
-  throw new Error(
-    "NEXT_PUBLIC_API_URL is not defined. See frontend/.env.example"
-  );
-}
+// Re-export all types for convenience
+export type {
+  RegisterRequest,
+  LoginRequest,
+  RefreshRequest,
+  LogoutRequest,
+  TokenResponse,
+  UserResponse,
+  MeResponse,
+  BusinessProfileCreate,
+  BusinessProfileUpdate,
+  BusinessProfileResponse,
+  BusinessProfileListResponse,
+  BusinessStructure,
+  BusinessStage,
+  OperatingMode,
+  ChatMessageRequest,
+  ChatMessageResponse,
+  IntentInfo,
+  ExtractedEntitySummary,
+  ResponseType,
+  ConversationCreate,
+  ConversationResponse,
+  MessageResponse,
+  ConversationMessagesResponse,
+  ConversationStatusResponse,
+  EligibilityAssessRequest,
+  EligibilityAssessmentResponse,
+  ConditionResult,
+  AssessmentStatus,
+  EligibilityRuleSetResponse,
+  KnowledgeSearchRequest,
+  KnowledgeSearchResponse,
+  RetrievalSourceResponse,
+  RoadmapGenerateRequest,
+  RoadmapRegenerateRequest,
+  RoadmapResponse,
+  RoadmapListResponse,
+  RoadmapProgress,
+  RoadmapDetailResponse,
+  RoadmapTaskResponse,
+  RoadmapTaskUpdate,
+  TaskStatus,
+  TaskCategory,
+  TaskPriority,
+  RoadmapStatus,
+  WorkflowExecutionRequest,
+  WorkflowExecutionResponse,
+  WorkflowStepResult,
+  WorkflowStatus,
+  StepStatus,
+  ClarificationResponse,
+  ResumeWorkflowRequest,
+  WorkflowServiceTypeInfo,
+  WorkflowServiceTypeResponse,
+  AIGenerateRequest,
+  AIGenerateResponse,
+  AIJSONRequest,
+  AIJSONResponse,
+  AIStructuredRequest,
+  AIStructuredResponse,
+  IntentClassifyRequest,
+  IntentClassifyResponse,
+  IntentExtractRequest,
+  IntentExtractResponse,
+  IntentAnalyzeRequest,
+  IntentAnalyzeResponse,
+  AIHealthResponse,
+  HealthResponse,
+  HealthDBResponse,
+  DocumentUploadResponse,
+  DocumentResponse,
+  DocumentListResponse,
+  DocumentMatchingResponse,
+  DocumentDeleteResponse,
+  MatchingDocument,
+  RecommendationRequest,
+  RecommendationResponse,
+  RecommendationDetail,
+  RecommendationListResponse,
+  SchemeDetail,
+};
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API_PREFIX = "/api/v1";
 
-type Json = Record<string, unknown> | Array<unknown> | string | number | boolean | null;
+// Token storage keys
+const ACCESS_TOKEN_KEY = "sarkarsetu_access_token";
+const REFRESH_TOKEN_KEY = "sarkarsetu_refresh_token";
 
-interface RequestOptions extends Omit<RequestInit, "body"> {
-  params?: Record<string, string | number | boolean | undefined>;
-  query?: Record<string, string | number | boolean | undefined>;
-}
+// ============================================================================
+// Error Classes
+// ============================================================================
 
-let accessToken: string | null = null;
-let refreshToken: string | null = null;
-
-/**
- * Set the auth tokens (call after login/register/refresh).
- */
-export function setAuthTokens(tokens: {
-  access_token: string;
-  refresh_token: string;
-}): void {
-  accessToken = tokens.access_token;
-  refreshToken = tokens.refresh_token;
-}
-
-/**
- * Clear auth tokens (call on logout / refresh failure).
- */
-export function clearAuthTokens(): void {
-  accessToken = null;
-  refreshToken = null;
-}
-
-export function getAccessToken(): string | null {
-  return accessToken;
-}
-
-/**
- * Build a URL with query params.
- */
-function buildUrl(path: string, options?: RequestOptions): string {
-  const base = `${API_URL}${API_PREFIX}${path}`;
-  const searchParams = new URLSearchParams();
-  const extras = { ...(options?.params ?? {}), ...(options?.query ?? {}) };
-  for (const [key, value] of Object.entries(extras)) {
-    if (value === undefined || value === null) continue;
-    searchParams.append(key, String(value));
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public detail: string,
+    public data?: unknown
+  ) {
+    super(detail);
+    this.name = "ApiError";
   }
-  const qs = searchParams.toString();
-  return qs ? `${base}?${qs}` : base;
+
+  static fromResponse(response: Response, data: unknown): ApiError {
+    const detail = (data as Record<string, unknown>)?.detail as string ?? `HTTP ${response.status}`;
+    return new ApiError(response.status, detail, data);
+  }
 }
 
-/**
- * Core request with auth, JSON, error handling, and automatic refresh on 401.
- */
-async function request<T>(
-  path: string,
-  options: RequestOptions = {}
+export class AuthError extends ApiError {
+  constructor(detail: string, public shouldRedirect: boolean = false) {
+    super(401, detail);
+    this.name = "AuthError";
+  }
+}
+
+export class NetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NetworkError";
+  }
+}
+
+// ============================================================================
+// Token Management
+// ============================================================================
+
+function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+function setTokens(access: string, refresh: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, access);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+}
+
+function clearTokens(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
+// ============================================================================
+// Core Fetch Wrapper
+// ============================================================================
+
+async function fetchWithAuth<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  retryCount = 0
 ): Promise<T> {
-  const url = buildUrl(path, options);
-  const headers: Record<string, string> = {};
+  const accessToken = getAccessToken();
 
-  let body: BodyInit | undefined;
-  let isFormData = false;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
 
-  if (options.body) {
-    if (options.body instanceof FormData) {
-      isFormData = true;
-      body = options.body;
-    } else {
-      headers["Content-Type"] = "application/json";
-      body = JSON.stringify(options.body);
-    }
+  if (accessToken) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${accessToken}`;
   }
 
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${endpoint}`, {
+    ...options,
+    headers,
+    credentials: "omit", // JWT in header, not cookies
+  });
+
+  // Handle 401 - try token refresh
+  if (response.status === 401 && retryCount === 0) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return fetchWithAuth<T>(endpoint, options, 1);
+    }
+    // Refresh failed - clear tokens and throw auth error
+    clearTokens();
+    throw new AuthError("Session expired. Please log in again.", true);
+  }
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw ApiError.fromResponse(response, data);
+  }
+
+  return data as T;
+}
+
+async function fetchMultipart<T>(
+  endpoint: string,
+  formData: FormData,
+  retryCount = 0
+): Promise<T> {
+  const accessToken = getAccessToken();
+
+  const headers: HeadersInit = {};
   if (accessToken) {
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${endpoint}`, {
+    method: "POST",
+    body: formData,
+    headers,
+    credentials: "omit",
+  });
 
-  try {
-    const res = await fetch(url, {
-      ...options,
-      headers,
-      body,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    // 401 → attempt token refresh once, then retry
-    if (res.status === 401 && refreshToken) {
-      clearTimeout(timeoutId);
-      try {
-        const refreshed = await refreshAccessToken();
-        if (refreshed) {
-          headers["Authorization"] = `Bearer ${accessToken}`;
-          const retry = await fetch(url, {
-            ...options,
-            headers,
-            body,
-            signal: controller.signal,
-          });
-          return await parseResponse<T>(retry);
-        }
-      } catch {
-        // refresh failed — fall through to error handling
-      }
-      clearAuthTokens();
-      throw new ApiError("Session expired. Please log in again.", 401);
+  if (response.status === 401 && retryCount === 0) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return fetchMultipart<T>(endpoint, formData, 1);
     }
-
-    return await parseResponse<T>(res);
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof ApiError) throw err;
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new ApiError("Request timed out.", 408);
-    }
-    throw new ApiError(
-      err instanceof Error ? err.message : "Network error.",
-      0
-    );
+    clearTokens();
+    throw new AuthError("Session expired. Please log in again.", true);
   }
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw ApiError.fromResponse(response, data);
+  }
+
+  return data as T;
 }
 
-async function parseResponse<T>(res: Response): Promise<T> {
-  const isJson = res.headers
-    .get("content-type")
-    ?.includes("application/json");
-
-  let body: any;
-  if (isJson) {
-    body = await res.json();
-  } else {
-    const text = await res.text();
-    body = text ? text : null;
-  }
-
-  if (!res.ok) {
-    const detail =
-      body && typeof body === "object" && "detail" in body
-        ? body.detail
-        : `Request failed with status ${res.status}`;
-    throw new ApiError(String(detail), res.status);
-  }
-
-  return body as T;
-}
-
-class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-    this.name = "ApiError";
-  }
-  static isApiError(err: unknown): err is ApiError {
-    return err instanceof ApiError;
-  }
-}
-
-/**
- * Refresh access token using the stored refresh token.
- */
-async function refreshAccessToken(): Promise<boolean> {
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
+
   try {
-    const res = await fetch(`${API_URL}${API_PREFIX}/auth/refresh`, {
+    const response = await fetch(`${API_BASE_URL}${API_PREFIX}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "omit",
     });
-    if (!res.ok) return false;
-    const data = (await res.json()) as RefreshTokenResponse;
-    setAuthTokens({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-    });
+
+    if (!response.ok) return false;
+
+    const data = (await response.json()) as TokenResponse;
+    setTokens(data.access_token, data.refresh_token);
     return true;
   } catch {
     return false;
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Auth                                                               */
-/* ------------------------------------------------------------------ */
+// ============================================================================
+// Public API Methods
+// ============================================================================
 
-export const authApi = {
-  register: (data: UserRegister) =>
-    request<TokenResponse>("/auth/register", {
+export const api = {
+  // ---------------------------------------------------------------------------
+  // Auth
+  // ---------------------------------------------------------------------------
+  async register(data: RegisterRequest): Promise<TokenResponse> {
+    const response = await fetchWithAuth<TokenResponse>("/auth/register", {
       method: "POST",
-      body: data,
-    }),
-  login: (data: UserLogin) =>
-    request<TokenResponse>("/auth/login", {
-      method: "POST",
-      body: data,
-    }),
-  refresh: (data: RefreshTokenRequest) =>
-    request<RefreshTokenResponse>("/auth/refresh", {
-      method: "POST",
-      body: data,
-    }),
-  logout: (data: RefreshTokenRequest) =>
-    request<LogoutResponse>("/auth/logout", {
-      method: "POST",
-      body: data,
-    }),
-  me: () => request<UserMeResponse>("/auth/me", { method: "GET" }),
-};
+      body: JSON.stringify(data),
+    });
+    setTokens(response.access_token, response.refresh_token);
+    return response;
+  },
 
-/* ------------------------------------------------------------------ */
-/* Business profiles                                                  */
-/* ------------------------------------------------------------------ */
-
-export const businessApi = {
-  create: (data: BusinessProfileCreate) =>
-    request<BusinessProfileResponse>("/businesses/", {
+  async login(data: LoginRequest): Promise<TokenResponse> {
+    const response = await fetchWithAuth<TokenResponse>("/auth/login", {
       method: "POST",
-      body: data,
-    }),
-  list: (params?: { skip?: number; limit?: number }) =>
-    request<BusinessProfileResponse[]>("/businesses/", {
-      method: "GET",
-      params,
-    }),
-  listArchived: () =>
-    request<BusinessProfileResponse[]>("/businesses/archived", {
-      method: "GET",
-    }),
-  get: (businessId: string) =>
-    request<BusinessProfileResponse>(`/businesses/${businessId}`, {
-      method: "GET",
-    }),
-  update: (businessId: string, data: BusinessProfileUpdate) =>
-    request<BusinessProfileResponse>(`/businesses/${businessId}`, {
+      body: JSON.stringify(data),
+    });
+    setTokens(response.access_token, response.refresh_token);
+    return response;
+  },
+
+  async refresh(data: RefreshRequest): Promise<TokenResponse> {
+    const response = await fetchWithAuth<TokenResponse>("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    setTokens(response.access_token, response.refresh_token);
+    return response;
+  },
+
+  async logout(data: LogoutRequest): Promise<{ message: string }> {
+    const response = await fetchWithAuth<{ message: string }>("/auth/logout", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    clearTokens();
+    return response;
+  },
+
+  async me(): Promise<MeResponse> {
+    return fetchWithAuth<MeResponse>("/auth/me");
+  },
+
+  // ---------------------------------------------------------------------------
+  // Business Profiles
+  // ---------------------------------------------------------------------------
+  async createBusiness(data: BusinessProfileCreate): Promise<BusinessProfileResponse> {
+    return fetchWithAuth<BusinessProfileResponse>("/businesses/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async listBusinesses(): Promise<BusinessProfileListResponse> {
+    return fetchWithAuth<BusinessProfileListResponse>("/businesses/");
+  },
+
+  async listArchivedBusinesses(): Promise<BusinessProfileListResponse> {
+    return fetchWithAuth<BusinessProfileListResponse>("/businesses/archived");
+  },
+
+  async getBusiness(id: string): Promise<BusinessProfileResponse> {
+    return fetchWithAuth<BusinessProfileResponse>(`/businesses/${id}`);
+  },
+
+  async updateBusiness(id: string, data: BusinessProfileUpdate): Promise<BusinessProfileResponse> {
+    return fetchWithAuth<BusinessProfileResponse>(`/businesses/${id}`, {
       method: "PATCH",
-      body: data,
-    }),
-  archive: (businessId: string) =>
-    request<void>(`/businesses/${businessId}`, { method: "DELETE" }),
-  restore: (businessId: string) =>
-    request<BusinessProfileResponse>(
-      `/businesses/${businessId}/restore`,
-      { method: "POST" }
-    ),
-  setDefault: (businessId: string) =>
-    request<BusinessProfileResponse>(
-      `/businesses/${businessId}/default`,
-      { method: "PATCH" }
-    ),
-};
+      body: JSON.stringify(data),
+    });
+  },
 
-/* ------------------------------------------------------------------ */
-/* Chat                                                               */
-/* ------------------------------------------------------------------ */
-
-export const chatApi = {
-  sendMessage: (data: ChatMessageRequest) =>
-    request<ChatMessageResponse>("/chat/message", {
-      method: "POST",
-      body: data,
-    }),
-  conversationStatus: (conversationId: string) =>
-    request<ConversationResponse>(
-      `/chat/conversations/${conversationId}/status`,
-      { method: "GET" }
-    ),
-};
-
-/* ------------------------------------------------------------------ */
-/* Conversations                                                      */
-/* ------------------------------------------------------------------ */
-
-export const conversationApi = {
-  create: (data: ConversationCreate) =>
-    request<ConversationResponse>("/conversations/", {
-      method: "POST",
-      body: data,
-    }),
-  list: (params?: { skip?: number; limit?: number }) =>
-    request<ConversationResponse[]>("/conversations/", {
-      method: "GET",
-      params,
-    }),
-  get: (conversationId: string) =>
-    request<ConversationResponse>(`/conversations/${conversationId}`, {
-      method: "GET",
-    }),
-  update: (conversationId: string, data: { title?: string; status?: string }) =>
-    request<ConversationResponse>(`/conversations/${conversationId}`, {
-      method: "PATCH",
-      body: data,
-    }),
-  archive: (conversationId: string) =>
-    request<void>(`/conversations/${conversationId}`, {
+  async archiveBusiness(id: string): Promise<{ message: string }> {
+    return fetchWithAuth<{ message: string }>(`/businesses/${id}`, {
       method: "DELETE",
-    }),
-  restore: (conversationId: string) =>
-    request<ConversationResponse>(
-      `/conversations/${conversationId}/restore`,
-      { method: "POST" }
-    ),
-  createMessage: (conversationId: string, data: { content: string; intent?: string }) =>
-    request<MessageResponse>(`/conversations/${conversationId}/messages`, {
+    });
+  },
+
+  async restoreBusiness(id: string): Promise<BusinessProfileResponse> {
+    return fetchWithAuth<BusinessProfileResponse>(`/businesses/${id}/restore`, {
       method: "POST",
-      body: data,
-    }),
-  listMessages: (conversationId: string, params?: { skip?: number; limit?: number }) =>
-    request<MessageResponse[]>(`/conversations/${conversationId}/messages`, {
-      method: "GET",
-      params,
-    }),
-};
+    });
+  },
 
-/* ------------------------------------------------------------------ */
-/* Eligibility                                                        */
-/* ------------------------------------------------------------------ */
+  async setDefaultBusiness(id: string): Promise<BusinessProfileResponse> {
+    return fetchWithAuth<BusinessProfileResponse>(`/businesses/${id}/default`, {
+      method: "PATCH",
+    });
+  },
 
-export const eligibilityApi = {
-  assess: (data: EligibilityAssessmentRequest) =>
-    request<EligibilityAssessmentResponse>("/eligibility/assess", {
+  // ---------------------------------------------------------------------------
+  // Conversations
+  // ---------------------------------------------------------------------------
+  async createConversation(data: ConversationCreate): Promise<ConversationResponse> {
+    return fetchWithAuth<ConversationResponse>("/conversations/", {
       method: "POST",
-      body: data,
-    }),
-  get: (assessmentId: string) =>
-    request<EligibilityAssessmentResponse>(
-      `/eligibility/assessments/${assessmentId}`,
-      { method: "GET" }
-    ),
-  listForBusiness: (businessId: string) =>
-    request<EligibilityAssessmentResponse[]>(
-      `/eligibility/businesses/${businessId}/assessments`,
-      { method: "GET" }
-    ),
-};
+      body: JSON.stringify(data),
+    });
+  },
 
-/* ------------------------------------------------------------------ */
-/* Knowledge search (citations)                                       */
-/* ------------------------------------------------------------------ */
+  async listConversations(skip = 0, limit = 50): Promise<ConversationResponse[]> {
+    return fetchWithAuth<ConversationResponse[]>(`/conversations/?skip=${skip}&limit=${limit}`);
+  },
 
-export const knowledgeApi = {
-  search: (data: KnowledgeSearchRequest) =>
-    request<KnowledgeSearchResponse>("/knowledge/search", {
+  async getConversation(id: string): Promise<ConversationResponse> {
+    return fetchWithAuth<ConversationResponse>(`/conversations/${id}`);
+  },
+
+  async updateConversation(
+    id: string,
+    data: Partial<ConversationCreate>
+  ): Promise<ConversationResponse> {
+    return fetchWithAuth<ConversationResponse>(`/conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async archiveConversation(id: string): Promise<{ message: string }> {
+    return fetchWithAuth<{ message: string }>(`/conversations/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  async deleteConversation(id: string): Promise<{ message: string }> {
+    return fetchWithAuth<{ message: string }>(`/conversations/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  async restoreConversation(id: string): Promise<ConversationResponse> {
+    return fetchWithAuth<ConversationResponse>(`/conversations/${id}/restore`, {
       method: "POST",
-      body: data,
-    }),
-};
+    });
+  },
 
-/* ------------------------------------------------------------------ */
-/* Roadmaps                                                           */
-/* ------------------------------------------------------------------ */
+  async getMessages(
+    conversationId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<ConversationMessagesResponse> {
+    return fetchWithAuth<ConversationMessagesResponse>(
+      `/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`
+    );
+  },
 
-export const roadmapApi = {
-  generate: (data: RoadmapGenerateRequest) =>
-    request<RoadmapResponse>("/roadmaps/generate", {
+  async createMessage(
+    conversationId: string,
+    content: string,
+    intent?: string,
+    messageMetadata?: Record<string, unknown>
+  ): Promise<MessageResponse> {
+    return fetchWithAuth<MessageResponse>(`/conversations/${conversationId}/messages`, {
       method: "POST",
-      body: data,
-    }),
-  list: (params?: { business_profile_id?: string; status?: string }) =>
-    request<{ roadmaps: RoadmapResponse[]; total_count: number }>(
-      "/roadmaps/",
-      { method: "GET", params },
-    ),
-  get: (roadmapId: string) =>
-    request<RoadmapDetailResponse>(`/roadmaps/${roadmapId}`, {
-      method: "GET",
-    }),
-  regenerate: (roadmapId: string, data: { preserve_completed?: boolean; reason?: string }) =>
-    request<RoadmapResponse>(`/roadmaps/${roadmapId}/regenerate`, {
+      body: JSON.stringify({ content, intent, message_metadata: messageMetadata }),
+    });
+  },
+
+  // ---------------------------------------------------------------------------
+  // Chat
+  // ---------------------------------------------------------------------------
+  async sendMessage(data: ChatMessageRequest): Promise<ChatMessageResponse> {
+    return fetchWithAuth<ChatMessageResponse>("/chat/message", {
       method: "POST",
-      body: data,
-    }),
-  progress: (roadmapId: string) =>
-    request<{
-      completed_tasks: number;
-      total_tasks: number;
-      progress_percentage: number;
-    }>(`/roadmaps/${roadmapId}/progress`, { method: "GET" }),
-  updateTask: (
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getConversationStatus(conversationId: string): Promise<ConversationStatusResponse> {
+    return fetchWithAuth<ConversationStatusResponse>(`/chat/conversations/${conversationId}/status`);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Eligibility
+  // ---------------------------------------------------------------------------
+  async assessEligibility(data: EligibilityAssessRequest): Promise<EligibilityAssessmentResponse> {
+    return fetchWithAuth<EligibilityAssessmentResponse>("/eligibility/assess", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getAssessment(assessmentId: string): Promise<EligibilityAssessmentResponse> {
+    return fetchWithAuth<EligibilityAssessmentResponse>(`/eligibility/assessments/${assessmentId}`);
+  },
+
+  async listBusinessAssessments(businessId: string): Promise<EligibilityAssessmentResponse[]> {
+    return fetchWithAuth<EligibilityAssessmentResponse[]>(`/eligibility/businesses/${businessId}/assessments`);
+  },
+
+  async getRuleSet(serviceType: string): Promise<EligibilityRuleSetResponse> {
+    return fetchWithAuth<EligibilityRuleSetResponse>(`/eligibility/rule-sets/${serviceType}`);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Knowledge Search (Citations)
+  // ---------------------------------------------------------------------------
+  async searchKnowledge(data: KnowledgeSearchRequest): Promise<KnowledgeSearchResponse> {
+    return fetchWithAuth<KnowledgeSearchResponse>("/knowledge/search", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ---------------------------------------------------------------------------
+  // Roadmaps
+  // ---------------------------------------------------------------------------
+  async generateRoadmap(data: RoadmapGenerateRequest): Promise<RoadmapResponse> {
+    return fetchWithAuth<RoadmapResponse>("/roadmaps/generate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async listRoadmaps(businessProfileId?: string, status?: string): Promise<RoadmapListResponse> {
+    const params = new URLSearchParams();
+    if (businessProfileId) params.append("business_profile_id", businessProfileId);
+    if (status) params.append("status", status);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return fetchWithAuth<RoadmapListResponse>(`/roadmaps/${query}`);
+  },
+
+  async getRoadmap(id: string): Promise<RoadmapDetailResponse> {
+    return fetchWithAuth<RoadmapDetailResponse>(`/roadmaps/${id}`);
+  },
+
+  async regenerateRoadmap(id: string, data: RoadmapRegenerateRequest = {}): Promise<RoadmapResponse> {
+    return fetchWithAuth<RoadmapResponse>(`/roadmaps/${id}/regenerate`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getRoadmapProgress(id: string): Promise<RoadmapProgress> {
+    return fetchWithAuth<RoadmapProgress>(`/roadmaps/${id}/progress`);
+  },
+
+  async updateTask(
     roadmapId: string,
     taskId: string,
     data: RoadmapTaskUpdate
-  ) =>
-    request<any>(`/roadmaps/${roadmapId}/tasks/${taskId}`, {
+  ): Promise<RoadmapTaskResponse> {
+    return fetchWithAuth<RoadmapTaskResponse>(`/roadmaps/${roadmapId}/tasks/${taskId}`, {
       method: "PATCH",
-      body: data,
-    }),
-  completeTask: (roadmapId: string, taskId: string) =>
-    request<any>(
+      body: JSON.stringify(data),
+    });
+  },
+
+  async completeTask(roadmapId: string, taskId: string): Promise<RoadmapTaskResponse> {
+    return fetchWithAuth<RoadmapTaskResponse>(
       `/roadmaps/${roadmapId}/tasks/${taskId}/complete`,
       { method: "POST" }
-    ),
-  skipTask: (roadmapId: string, taskId: string) =>
-    request<any>(
+    );
+  },
+
+  async skipTask(roadmapId: string, taskId: string): Promise<RoadmapTaskResponse> {
+    return fetchWithAuth<RoadmapTaskResponse>(
       `/roadmaps/${roadmapId}/tasks/${taskId}/skip`,
       { method: "POST" }
-    ),
-};
+    );
+  },
 
-/* ------------------------------------------------------------------ */
-/* Workflows                                                          */
-/* ------------------------------------------------------------------ */
-
-export const workflowApi = {
-  start: (data: WorkflowExecutionRequest) =>
-    request<WorkflowExecutionResponse>("/workflows/", {
+  // ---------------------------------------------------------------------------
+  // Workflows
+  // ---------------------------------------------------------------------------
+  async startWorkflow(data: WorkflowExecutionRequest): Promise<WorkflowExecutionResponse> {
+    return fetchWithAuth<WorkflowExecutionResponse>("/workflows/", {
       method: "POST",
-      body: data,
-    }),
-  get: (workflowId: string) =>
-    request<WorkflowExecutionResponse>(`/workflows/${workflowId}`, {
-      method: "GET",
-    }),
-  respond: (workflowId: string, data: ClarificationResponse) =>
-    request<WorkflowExecutionResponse>(
-      `/workflows/${workflowId}/respond`,
-      { method: "POST", body: data }
-    ),
-  resume: (workflowId: string, data: { message?: string }) =>
-    request<WorkflowExecutionResponse>(
-      `/workflows/${workflowId}/resume`,
-      { method: "POST", body: data }
-    ),
-  cancel: (workflowId: string) =>
-    request<WorkflowExecutionResponse>(
-      `/workflows/${workflowId}/cancel`,
-      { method: "POST" }
-    ),
-  listServiceTypes: () =>
-    request<{ service_types: Array<{ service_type: string; display_name: string; description: string }> }>(
-      "/workflows/",
-      { method: "GET" }
-    ),
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getWorkflow(workflowId: string): Promise<WorkflowExecutionResponse> {
+    return fetchWithAuth<WorkflowExecutionResponse>(`/workflows/${workflowId}`);
+  },
+
+  async respondWorkflow(
+    workflowId: string,
+    data: ClarificationResponse
+  ): Promise<WorkflowExecutionResponse> {
+    return fetchWithAuth<WorkflowExecutionResponse>(`/workflows/${workflowId}/respond`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async resumeWorkflow(
+    workflowId: string,
+    data: ResumeWorkflowRequest = {}
+  ): Promise<WorkflowExecutionResponse> {
+    return fetchWithAuth<WorkflowExecutionResponse>(`/workflows/${workflowId}/resume`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async cancelWorkflow(workflowId: string): Promise<WorkflowExecutionResponse> {
+    return fetchWithAuth<WorkflowExecutionResponse>(`/workflows/${workflowId}/cancel`, {
+      method: "POST",
+    });
+  },
+
+  async listWorkflows(): Promise<WorkflowExecutionResponse[]> {
+    return fetchWithAuth<WorkflowExecutionResponse[]>("/workflows/history");
+  },
+
+  async listWorkflowTypes(): Promise<WorkflowServiceTypeResponse> {
+    return fetchWithAuth<WorkflowServiceTypeResponse>("/workflows/");
+  },
+
+  // ---------------------------------------------------------------------------
+  // AI / Intent (require GEMINI_ENABLED=true on backend)
+  // ---------------------------------------------------------------------------
+  async aiGenerate(data: AIGenerateRequest): Promise<AIGenerateResponse> {
+    return fetchWithAuth<AIGenerateResponse>("/ai/generate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async aiJson(data: AIJSONRequest): Promise<AIJSONResponse> {
+    return fetchWithAuth<AIJSONResponse>("/ai/json", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async aiStructured(data: AIStructuredRequest): Promise<AIStructuredResponse> {
+    return fetchWithAuth<AIStructuredResponse>("/ai/structured", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async classifyIntent(data: IntentClassifyRequest): Promise<IntentClassifyResponse> {
+    return fetchWithAuth<IntentClassifyResponse>("/intent/classify", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async extractEntities(data: IntentExtractRequest): Promise<IntentExtractResponse> {
+    return fetchWithAuth<IntentExtractResponse>("/intent/extract", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async analyzeIntent(data: IntentAnalyzeRequest): Promise<IntentAnalyzeResponse> {
+    return fetchWithAuth<IntentAnalyzeResponse>("/intent/analyze", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async aiHealth(): Promise<AIHealthResponse> {
+    return fetchWithAuth<AIHealthResponse>("/ai/health");
+  },
+
+  // ---------------------------------------------------------------------------
+  // Health
+  // ---------------------------------------------------------------------------
+  async health(): Promise<HealthResponse> {
+    return fetchWithAuth<HealthResponse>("/health");
+  },
+
+  async healthDb(): Promise<HealthDBResponse> {
+    return fetchWithAuth<HealthDBResponse>("/health/db");
+  },
+
+  // ---------------------------------------------------------------------------
+  // Documents
+  // ---------------------------------------------------------------------------
+  async uploadDocument(
+    file: File,
+    businessProfileId?: string
+  ): Promise<DocumentUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const params = businessProfileId
+      ? `?business_profile_id=${businessProfileId}`
+      : "";
+    return fetchMultipart<DocumentUploadResponse>(`/documents/upload${params}`, formData);
+  },
+
+  async listDocuments(businessProfileId?: string): Promise<DocumentListResponse> {
+    const params = businessProfileId
+      ? `?business_profile_id=${businessProfileId}`
+      : "";
+    return fetchWithAuth<DocumentListResponse>(`/documents/${params}`);
+  },
+
+  async getDocument(id: string): Promise<DocumentResponse> {
+    return fetchWithAuth<DocumentResponse>(`/documents/${id}`);
+  },
+
+  async getDocumentMatching(
+    id: string,
+    service: string
+  ): Promise<DocumentMatchingResponse> {
+    return fetchWithAuth<DocumentMatchingResponse>(
+      `/documents/${id}/matching?service=${service}`
+    );
+  },
+
+  async deleteDocument(id: string): Promise<DocumentDeleteResponse> {
+    return fetchWithAuth<DocumentDeleteResponse>(`/documents/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  // ---------------------------------------------------------------------------
+  // Recommendations
+  // ---------------------------------------------------------------------------
+  async getRecommendations(
+    data: RecommendationRequest
+  ): Promise<RecommendationResponse> {
+    return fetchWithAuth<RecommendationResponse>("/recommendations/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async listRecommendations(
+    businessProfileId?: string
+  ): Promise<RecommendationListResponse> {
+    const params = businessProfileId
+      ? `?business_profile_id=${businessProfileId}`
+      : "";
+    return fetchWithAuth<RecommendationListResponse>(
+      `/recommendations/${params}`
+    );
+  },
+
+  async getRecommendation(
+    id: string
+  ): Promise<RecommendationResponse> {
+    return fetchWithAuth<RecommendationResponse>(`/recommendations/${id}`);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Token Helpers
+  // ---------------------------------------------------------------------------
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+  clearTokens,
+  isTokenExpired,
+  isAuthenticated: () => !!getAccessToken() && !isTokenExpired(getAccessToken()!),
 };
-
-/* ------------------------------------------------------------------ */
-/* Health                                                             */
-/* ------------------------------------------------------------------ */
-
-export const healthApi = {
-  check: () => request<{ status: string; application: string; version: string }>(
-    "/health",
-    { method: "GET" }
-  ),
-  db: () => request<{ status: string; database: string }>(
-    "/health/db",
-    { method: "GET" }
-  ),
-};
-
-export { ApiError };

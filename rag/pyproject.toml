@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sarkarsetu-rag"
+version = "1.0.0"
+description = "RAG subsystem for SarkarSetu AI"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv==1.2.2",
+    "pydantic==2.9.2",
+    "pydantic-settings==2.5.0",
+    "PyMuPDF==2.1",
+    "pdfplumber==0.11.10",
+    "pytesseract==0.3.13",
+    "Pillow==13.0.0",
+    "python-multipart==0.0.31",
+    "sentence-transformers==3.0.1",
+    "faiss-cpu==1.15.1",
+    "pandas==2.2.3",
+    "numpy==1.26.4",
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.0",
+]
+
+[tool.setuptools]
+packages = [
+    "rag",
+    "rag.ingestion",
+    "rag.embeddings",
+    "rag.config",
+    "rag.integration",
+    "rag.tests",
+    "rag.agents",
+    "rag.storage",
+    "rag.document_matching",
+    "rag.retrieval",
+    "rag.scripts",
+    "rag.sources",
+    "rag.documents",
+    "rag.validation",
+]
+package-dir = { "rag" = "rag_pkg" }

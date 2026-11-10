@@ -1,5 +1,6 @@
 """UploadedDocument schemas."""
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -45,3 +46,42 @@ class UploadedDocumentResponse(UploadedDocumentBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- New API Response Schemas ---
+
+class DocumentUploadResponse(BaseModel):
+    """Response for document upload."""
+    document_id: UUID
+    filename: str
+    status: str
+    message: str
+
+
+class DocumentListResponse(BaseModel):
+    """Response for document list."""
+    items: list[UploadedDocumentResponse]
+    total: int
+
+
+class DocumentResponse(UploadedDocumentResponse):
+    """Extended document response with extraction details."""
+    pass
+
+
+class DocumentMatchingResponse(BaseModel):
+    """Response for document matching against requirements."""
+    document_id: UUID
+    service: str
+    overall_status: str
+    checklist_coverage: float
+    available_documents: list[dict[str, Any]]
+    missing_documents: list[dict[str, Any]]
+    incomplete_extraction: list[dict[str, Any]]
+    needs_review: list[dict[str, Any]]
+    review_items: list[dict[str, Any]]
+
+
+class DocumentDeleteResponse(BaseModel):
+    """Response for document deletion."""
+    message: str

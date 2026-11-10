@@ -1,7 +1,6 @@
 """Workflow API router.
 
 Provides authenticated endpoints for workflow management:
-
 - POST /api/v1/workflows - Start a new workflow execution
 - GET /api/v1/workflows/{workflow_id} - Get workflow execution status
 - POST /api/v1/workflows/{workflow_id}/respond - Respond to clarification
@@ -43,7 +42,23 @@ from app.services.workflows.state_manager import WorkflowStateManager
 from app.services.workflows.step_executor import StepExecutor
 from app.services.workflows.workflow_result import WorkflowStepResult as ServiceWorkflowStepResult
 
-router = APIRouter(prefix="/workflows", tags=["workflows"])
+# Person 2 RAG subsystem integration (optional hard dependency).
+# Falls back to the fixture provider when rag/ is not on the path or its
+# dependencies are missing, so the backend keeps starting in dev.
+try:
+    from rag.integration.knowledge_provider import RagKnowledgeProvider
+
+    _RAG_PROVIDER_AVAILABLE = True
+except Exception:  # pragma: no cover - backend runs without rag/ deps
+    RagKnowledgeProvider = None  # type: ignore[assignment,misc]
+    _RAG_PROVIDER_AVAILABLE = False
+
+
+def _get_knowledge_provider():
+    """Get the appropriate knowledge provider (RAG or fixture)."""
+    if _RAG_PROVIDER_AVAILABLE and RagKnowledgeProvider is not None:
+        return RagKnowledgeProvider()
+    return get_fixture_provider(enabled=settings.knowledge_retrieval_dev_fixture)
 
 
 async def get_ai_service() -> AIService:
@@ -85,9 +100,7 @@ async def get_workflow_engine(
         registry=rule_registry,
         evaluator=RuleEvaluator(),
     )
-    knowledge_provider = get_fixture_provider(
-        enabled=settings.knowledge_retrieval_enabled
-    )
+    knowledge_provider = _get_knowledge_provider()
     return WorkflowEngine(
         state_manager=state_manager,
         step_executor=StepExecutor(
@@ -117,9 +130,7 @@ async def get_workflow_registry(
         registry=rule_registry,
         evaluator=RuleEvaluator(),
     )
-    knowledge_provider = get_fixture_provider(
-        enabled=settings.knowledge_retrieval_enabled
-    )
+    knowledge_provider = _get_knowledge_provider()
     return WorkflowRegistry(
         ai_service=ai_service,
         conversation_service=conversation_service,

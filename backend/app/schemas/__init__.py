@@ -37,6 +37,11 @@ from app.schemas.conversation import (
     MessageResponse,
 )
 from app.schemas.document import (
+    DocumentDeleteResponse,
+    DocumentListResponse,
+    DocumentMatchingResponse,
+    DocumentResponse,
+    DocumentUploadResponse,
     UploadedDocumentBase,
     UploadedDocumentCreate,
     UploadedDocumentResponse,
@@ -148,6 +153,11 @@ __all__ = [
     "UploadedDocumentCreate",
     "UploadedDocumentUpdate",
     "UploadedDocumentResponse",
+    "DocumentUploadResponse",
+    "DocumentListResponse",
+    "DocumentResponse",
+    "DocumentMatchingResponse",
+    "DocumentDeleteResponse",
     # Roadmap
     "RoadmapBase",
     "RoadmapCreate",

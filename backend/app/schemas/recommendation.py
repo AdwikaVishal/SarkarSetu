@@ -1,5 +1,6 @@
 """Recommendation schemas."""
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -54,3 +55,52 @@ class RecommendationResponse(RecommendationBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- New API Schemas ---
+
+class SchemeDetail(BaseModel):
+    """Scheme metadata."""
+    id: str
+    name: str
+    full_name: str
+    category: str
+    ministry: str
+    description: str
+    official_url: str
+
+
+class RecommendationDetail(BaseModel):
+    """Detailed recommendation for a scheme."""
+    scheme: SchemeDetail
+    eligibility_status: str
+    explanation: str
+    required_documents: list[str]
+    missing_information: list[str]
+    official_sources: list[dict[str, str]]
+    matched_rules: list[str]
+    failed_rules: list[str]
+
+
+class RecommendationRequest(BaseModel):
+    """Request for personalized recommendations."""
+    business_profile_id: UUID
+    service_filter: str | None = None
+
+
+class RecommendationResponse(BaseModel):
+    """Response with personalized recommendations."""
+    business_profile_id: UUID
+    total_schemes_evaluated: int
+    eligible_count: int
+    potentially_eligible_count: int
+    needs_info_count: int
+    ineligible_count: int
+    recommendations: list[RecommendationDetail]
+    missing_information: list[str]
+
+
+class RecommendationListResponse(BaseModel):
+    """Response for listing cached recommendations."""
+    items: list[RecommendationResponse]
+    total: int

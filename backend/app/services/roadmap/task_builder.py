@@ -131,6 +131,7 @@ class TaskBuilder:
             roadmap_id=roadmap_id,
             title=definition.title,
             description=definition.description,
+            category=definition.category.value,
             sequence_number=sequence_number,
             status=TaskStatus.PENDING.value,
             priority=definition.priority.value,
@@ -158,7 +159,6 @@ class TaskBuilder:
             "document_ids": [str(d) for d in definition.document_ids],
             "workflow_step_id": definition.workflow_step_id,
             "completion_criteria": definition.completion_criteria,
-            "category": definition.category.value,
         }
 
         self.db.add(task)

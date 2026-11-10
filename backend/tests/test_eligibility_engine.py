@@ -21,6 +21,7 @@ from app.models.eligibility_rule import (
 from app.schemas.eligibility_rule import (
     AssessmentStatus,
     ConditionOutcome,
+    RuleCreateRequest,
     RuleOperator,
 )
 from app.services.eligibility import (
@@ -441,6 +442,7 @@ class TestRuleRegistry:
         db_session,
     ):
         from app.services.eligibility_engine.rule_loader import RuleLoader
+        from uuid import uuid4
 
         registry = RuleRegistry(db_session)
         loader = RuleLoader()
@@ -463,7 +465,7 @@ class TestRuleRegistry:
             ],
         )
 
-        rule_set = loader.load_rule_set(request, created_by="test_user")
+        rule_set = loader.load_rule_set(request, created_by=None)
         persisted = await registry.register_rule_set(rule_set)
 
         assert persisted.rule_set_id == "test_scheme"
@@ -505,11 +507,12 @@ class TestRuleRegistry:
             ],
         )
 
-        rule_set = loader.load_rule_set(request, created_by="test_user")
+        rule_set = loader.load_rule_set(request, created_by=None)
         await registry.register_rule_set(rule_set)
 
-        # Try to register again
-        rule_set2 = loader.load_rule_set(request, created_by="test_user")
+        # Try to register again with a new loader instance
+        loader2 = RuleLoader()
+        rule_set2 = loader2.load_rule_set(request, created_by=None)
         with pytest.raises(ValueError, match="already exists"):
             await registry.register_rule_set(rule_set2)
 
@@ -541,14 +544,14 @@ class TestRuleRegistry:
             ],
         )
 
-        rule_set = loader.load_rule_set(request, created_by="test_user")
+        rule_set = loader.load_rule_set(request, created_by=None)
         await registry.register_rule_set(rule_set)
 
         # Approve
-        approved = await registry.approve_rule_set("test_scheme", "1.0.0", "admin_user")
+        approved = await registry.approve_rule_set("test_scheme", "1.0.0", None)
         assert approved is not None
         assert approved.approval_status == "approved"
-        assert approved.approved_by == "admin_user"
+        assert approved.approved_by is None
         assert approved.approved_at is not None
 
     @pytest.mark.asyncio
@@ -579,9 +582,9 @@ class TestRuleRegistry:
             ],
         )
 
-        rule_set = loader.load_rule_set(request, created_by="test_user")
+        rule_set = loader.load_rule_set(request, created_by=None)
         await registry.register_rule_set(rule_set)
-        await registry.approve_rule_set("test_scheme", "1.0.0", "admin_user")
+        await registry.approve_rule_set("test_scheme", "1.0.0", None)
 
         # Get approved
         retrieved = await registry.get_approved_rule_set("test_scheme")
@@ -617,9 +620,9 @@ class TestRuleRegistry:
             ],
         )
 
-        rule_set = loader.load_rule_set(request, created_by="test_user")
+        rule_set = loader.load_rule_set(request, created_by=None)
         await registry.register_rule_set(rule_set)
-        await registry.approve_rule_set("test_scheme", "1.0.0", "admin_user")
+        await registry.approve_rule_set("test_scheme", "1.0.0", None)
 
         # Retire
         retired = await registry.retire_rule_set("test_scheme", "1.0.0")

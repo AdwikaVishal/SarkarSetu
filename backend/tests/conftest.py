@@ -3,7 +3,7 @@ import os
 from collections.abc import AsyncGenerator
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -30,14 +30,7 @@ async def _create_tables(engine) -> None:
 async def _drop_tables(engine) -> None:
     """Drop all tables with CASCADE to handle foreign keys."""
     async with engine.begin() as conn:
-        await conn.execute(
-            text(
-                "DROP TABLE IF EXISTS "
-                "roadmap_tasks, messages, roadmaps, uploaded_documents, "
-                "eligibility_results, recommendations, conversations, "
-                "refresh_tokens, business_profiles, users CASCADE"
-            )
-        )
+        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.fixture
@@ -80,7 +73,8 @@ async def client(app, db_session) -> AsyncGenerator:
 
     main_app.dependency_overrides[get_db] = override_get_db
 
-    async with AsyncClient(app=main_app, base_url="http://test") as ac:
+    transport = ASGITransport(app=main_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
     # Clean up

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -66,20 +66,50 @@ export function MobileDrawer({
   userName,
   email,
   onLogout,
+  menuTriggerRef,
 }: {
   open: boolean;
   onClose: () => void;
   userName?: string;
   email?: string;
   onLogout?: () => void | Promise<void>;
+  menuTriggerRef?: React.RefObject<HTMLButtonElement>;
 }) {
   const pathname = usePathname();
+  const panelRef = useRef<HTMLElement>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear pending close timeout on unmount.
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Close handler that returns focus to the menu trigger after the drawer hides.
+  const handleClose = useCallback(() => {
+    // Move focus to the menu trigger BEFORE closing so focus is already
+    // outside the drawer when aria-hidden is applied. This prevents the
+    // "Blocked aria-hidden on an element because its descendant retained focus" error.
+    if (menuTriggerRef?.current) {
+      menuTriggerRef.current.focus();
+    }
+    onClose();
+  }, [onClose, menuTriggerRef]);
 
   // Close when the route changes.
   useEffect(() => {
-    onClose();
+    handleClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
+
+  // Move focus into the drawer panel when opened.
+  useEffect(() => {
+    if (!open || !panelRef.current) return;
+    panelRef.current.focus();
+  }, [open]);
 
   // Lock page scroll while the drawer is open.
   useEffect(() => {
@@ -95,14 +125,15 @@ export function MobileDrawer({
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") handleClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, handleClose]);
 
   return (
     <div
+      id="mobile-drawer"
       className={cn(
         "fixed inset-0 z-50 lg:hidden",
         open ? "visible" : "invisible pointer-events-none"
@@ -115,19 +146,24 @@ export function MobileDrawer({
           "absolute inset-0 bg-text-primary/30 backdrop-blur-sm transition-opacity duration-300",
           open ? "opacity-100" : "opacity-0"
         )}
-        onClick={onClose}
+        onClick={handleClose}
         aria-hidden="true"
+        inert={!open}
       />
 
       {/* Panel */}
       <aside
+        ref={panelRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={open}
         aria-label="Navigation menu"
+        aria-hidden={!open}
+        tabIndex={-1}
         className={cn(
           "absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col bg-bg-elevated shadow-xl transition-transform duration-300 ease-out",
           open ? "translate-x-0" : "-translate-x-full"
         )}
+        inert={!open}
       >
         <div className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border px-4">
           <Link
@@ -144,7 +180,7 @@ export function MobileDrawer({
           </Link>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary"
             aria-label="Close navigation menu"
           >
@@ -168,7 +204,7 @@ export function MobileDrawer({
                     <li key={link.href}>
                       <Link
                         href={link.href}
-                        onClick={onClose}
+                        onClick={handleClose}
                         aria-current={active ? "page" : undefined}
                         className={cn(
                           "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",

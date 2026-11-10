@@ -239,9 +239,26 @@ async def list_documents(
             )
             documents = list(result.scalars().all())
 
+        # Build response, validating each document individually so a
+        # single malformed record cannot break the entire list.
+        items: list[DocumentResponse] = []
+        for doc in documents:
+            try:
+                items.append(DocumentResponse.model_validate(doc))
+            except Exception as val_exc:  # noqa: BLE001 - skip bad records
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    "Skipping invalid document record",
+                    extra={
+                        "document_id": str(doc.id),
+                        "error": str(val_exc),
+                    },
+                )
+
         return DocumentListResponse(
-            items=[DocumentResponse.model_validate(doc) for doc in documents],
-            total=len(documents),
+            items=items,
+            total=len(items),
         )
 
     except HTTPException:

@@ -172,11 +172,24 @@ class EligibilityAssessmentService:
             request: Original assessment request.
             result: Engine assessment result.
         """
+        # Resolve the rule set's database UUID from its string identifier.
+        rule_set_db_id = None
+        rule_set_id_str = result.result_data.get("rule_set_id")
+        if rule_set_id_str:
+            from app.services.eligibility_engine.rule_registry import RuleRegistry
+
+            registry = RuleRegistry(self.db)
+            rule_set = await registry.get_rule_set(
+                rule_set_id_str, result.rule_set_version
+            )
+            if rule_set:
+                rule_set_db_id = rule_set.id
+
         assessment = EligibilityAssessment(
             assessment_id=result.assessment_id,
             user_id=request.user_id,
             business_profile_id=request.business_profile_id,
-            rule_set_id=result.result_data.get("rule_set_id", ""),
+            rule_set_id=rule_set_db_id,
             rule_set_version=result.rule_set_version,
             scheme_name=result.scheme_name,
             registration_type=request.registration_type,

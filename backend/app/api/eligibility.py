@@ -21,12 +21,12 @@ from app.models.user import User
 from app.schemas.eligibility_rule import (
     AssessmentStatus,
     ConditionResult,
+    EligibilityAssessmentRequest,
     EligibilityAssessmentResponse,
     RuleCreateRequest,
     RuleSetResponse,
     RuleStatus,
 )
-from app.services.eligibility import EligibilityAssessmentRequest
 from app.services.eligibility_engine.assessment_service import (
     EligibilityAssessmentService,
 )

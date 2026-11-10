@@ -168,9 +168,12 @@ class EligibilityAssessmentRequest(BaseModel):
 
     Mirrors the protocol in app/services/eligibility.py for API
     layer compatibility.
+
+    user_id is optional in the request because it is always overridden
+    from the authenticated JWT token in the API layer.
     """
 
-    user_id: UUID
+    user_id: UUID | None = None
     business_profile_id: UUID | None = None
     scheme_name: str | None = None
     registration_type: str | None = None

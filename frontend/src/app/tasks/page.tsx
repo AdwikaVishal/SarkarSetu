@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { api, type RoadmapTaskResponse, type TaskStatus } from "@/lib/api";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";

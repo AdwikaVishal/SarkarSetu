@@ -193,15 +193,43 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public detail: string,
-    public data?: unknown
+    public data?: unknown,
+    public validationErrors?: Array<{
+      type: string;
+      loc: Array<string | number>;
+      msg: string;
+      input: unknown;
+    }>
   ) {
     super(detail);
     this.name = "ApiError";
   }
 
   static fromResponse(response: Response, data: unknown): ApiError {
-    const detail = (data as Record<string, unknown>)?.detail as string ?? `HTTP ${response.status}`;
-    return new ApiError(response.status, detail, data);
+    const rawDetail = (data as Record<string, unknown>)?.detail;
+    let detail: string;
+    let validationErrors: ApiError["validationErrors"] | undefined;
+
+    if (Array.isArray(rawDetail)) {
+      // FastAPI 422 validation error array: [{type, loc, msg, input}, ...]
+      validationErrors = rawDetail as ApiError["validationErrors"];
+      const messages = validationErrors.map((e) => {
+        const locPath = e.loc
+          .slice(1) // skip "body"
+          .map((p) => String(p))
+          .join(".");
+        return locPath ? `${locPath}: ${e.msg}` : e.msg;
+      });
+      detail = messages.join("; ");
+    } else if (typeof rawDetail === "string") {
+      detail = rawDetail;
+    } else if (rawDetail !== null && rawDetail !== undefined) {
+      detail = String(rawDetail);
+    } else {
+      detail = `HTTP ${response.status}`;
+    }
+
+    return new ApiError(response.status, detail, data, validationErrors);
   }
 }
 
@@ -258,6 +286,19 @@ function isTokenExpired(token: string): boolean {
 // Core Fetch Wrapper
 // ============================================================================
 
+// Retryable HTTP status codes (transient errors that may succeed on retry).
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+// Maximum retry attempts for transient errors.
+const MAX_RETRIES = 3;
+
+// Base delay in ms for exponential backoff.
+const RETRY_BASE_DELAY = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchWithAuth<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -274,11 +315,24 @@ async function fetchWithAuth<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${endpoint}`, {
-    ...options,
-    headers,
-    credentials: "omit", // JWT in header, not cookies
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${API_PREFIX}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: "omit", // JWT in header, not cookies
+    });
+  } catch (fetchErr) {
+    // Network failure - retry with backoff if under max retries.
+    if (retryCount < MAX_RETRIES) {
+      const backoff = RETRY_BASE_DELAY * 2 ** retryCount;
+      await sleep(backoff);
+      return fetchWithAuth<T>(endpoint, options, retryCount + 1);
+    }
+    throw new NetworkError(
+      fetchErr instanceof Error ? fetchErr.message : "Network request failed"
+    );
+  }
 
   // Handle 401 - try token refresh
   if (response.status === 401 && retryCount === 0) {
@@ -289,6 +343,13 @@ async function fetchWithAuth<T>(
     // Refresh failed - clear tokens and throw auth error
     clearTokens();
     throw new AuthError("Session expired. Please log in again.", true);
+  }
+
+  // Retry on transient server errors (503, 429, etc.)
+  if (RETRYABLE_STATUSES.has(response.status) && retryCount < MAX_RETRIES) {
+    const backoff = RETRY_BASE_DELAY * 2 ** retryCount;
+    await sleep(backoff);
+    return fetchWithAuth<T>(endpoint, options, retryCount + 1);
   }
 
   const data = await response.json().catch(() => ({}));
@@ -312,12 +373,24 @@ async function fetchMultipart<T>(
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${endpoint}`, {
-    method: "POST",
-    body: formData,
-    headers,
-    credentials: "omit",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${API_PREFIX}${endpoint}`, {
+      method: "POST",
+      body: formData,
+      headers,
+      credentials: "omit",
+    });
+  } catch (fetchErr) {
+    if (retryCount < MAX_RETRIES) {
+      const backoff = RETRY_BASE_DELAY * 2 ** retryCount;
+      await sleep(backoff);
+      return fetchMultipart<T>(endpoint, formData, retryCount + 1);
+    }
+    throw new NetworkError(
+      fetchErr instanceof Error ? fetchErr.message : "Network request failed"
+    );
+  }
 
   if (response.status === 401 && retryCount === 0) {
     const refreshed = await tryRefreshToken();
@@ -326,6 +399,12 @@ async function fetchMultipart<T>(
     }
     clearTokens();
     throw new AuthError("Session expired. Please log in again.", true);
+  }
+
+  if (RETRYABLE_STATUSES.has(response.status) && retryCount < MAX_RETRIES) {
+    const backoff = RETRY_BASE_DELAY * 2 ** retryCount;
+    await sleep(backoff);
+    return fetchMultipart<T>(endpoint, formData, retryCount + 1);
   }
 
   const data = await response.json().catch(() => ({}));

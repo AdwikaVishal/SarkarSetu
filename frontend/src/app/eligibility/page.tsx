@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { api, type BusinessProfileResponse, type EligibilityAssessRequest, type EligibilityAssessmentResponse, type ConditionResult, AssessmentStatus } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -206,7 +207,6 @@ function AssessmentDetailCard({ assessment, onClose }: { assessment: Eligibility
 
 function EligibilityPageContent() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   
   const [businesses, setBusinesses] = useState<BusinessProfileResponse[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>("");
@@ -215,6 +215,7 @@ function EligibilityPageContent() {
   const [loading] = useState(false);
   const [assessing, setAssessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showDetail, setShowDetail] = useState<EligibilityAssessmentResponse | null>(null);
 
   const loadBusinesses = async () => {
@@ -288,8 +289,24 @@ function EligibilityPageContent() {
       const result = await api.assessEligibility(request);
       setAssessments(prev => [result, ...prev.filter(a => a.scheme_name !== scheme.name)]);
     } catch (err: unknown) {
-      const apiError = err as { detail?: string };
-      setError(apiError.detail || "Failed to run eligibility assessment");
+      const apiError = err as ApiError;
+      setFieldErrors({});
+      if (apiError.validationErrors && apiError.validationErrors.length > 0) {
+        // Display field-specific validation errors
+        const fieldErrMap: Record<string, string> = {};
+        apiError.validationErrors.forEach((ve) => {
+          const fieldName = ve.loc.slice(1).join(".");
+          fieldErrMap[fieldName] = ve.msg;
+        });
+        setFieldErrors(fieldErrMap);
+        setError(
+          `Validation failed: ${apiError.validationErrors
+            .map((ve) => ve.msg)
+            .join("; ")}`
+        );
+      } else {
+        setError(apiError.detail || "Failed to run eligibility assessment");
+      }
     } finally {
       setAssessing(false);
     }
@@ -382,6 +399,9 @@ function EligibilityPageContent() {
                 {businesses.length === 0 && (
                   <p className="text-text-muted text-sm mt-2">Create a business profile first</p>
                 )}
+                {fieldErrors.business_profile_id && (
+                  <p className="text-error text-sm mt-1">{fieldErrors.business_profile_id}</p>
+                )}
               </div>
 
               <div>
@@ -396,6 +416,12 @@ function EligibilityPageContent() {
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
+                {fieldErrors.scheme_name && (
+                  <p className="text-error text-sm mt-1">{fieldErrors.scheme_name}</p>
+                )}
+                {fieldErrors.registration_type && (
+                  <p className="text-error text-sm mt-1">{fieldErrors.registration_type}</p>
+                )}
               </div>
             </div>
 

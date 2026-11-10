@@ -14,7 +14,7 @@ class UploadedDocumentBase(BaseModel):
     file_size: int = Field(..., gt=0)
     processing_status: str = Field(
         default="pending",
-        pattern="^(pending|processing|completed|failed)$",
+        pattern="^(pending|processing|completed|failed|error)$",
     )
     document_type: str | None = Field(None, max_length=100)
     extracted_data: dict | None = None

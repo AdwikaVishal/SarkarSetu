@@ -10,8 +10,16 @@ export interface PaginatedResponse<T> {
   total: number;
 }
 
+export interface ApiErrorValidationError {
+  type: string;
+  loc: Array<string | number>;
+  msg: string;
+  input: unknown;
+}
+
 export interface ApiError {
-  detail: string;
+  detail: string | Array<ApiErrorValidationError>;
+  validationErrors?: ApiErrorValidationError[];
 }
 
 // ============================================================================

@@ -278,10 +278,10 @@ class EligibilityAssessment(Base):
         nullable=True,
         index=True,
     )
-    rule_set_id: Mapped[uuid.UUID] = mapped_column(
+    rule_set_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("eligibility_rule_sets.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     rule_set_version: Mapped[str] = mapped_column(

@@ -128,6 +128,14 @@ const validateFile = (file: File, accept: string): string | null => {
     }
   }, [queuedFiles, onUpload, onError]);
 
+  // Opens the native file chooser. Must be called synchronously from a user
+  // activation handler (click) so the browser grants file-chooser permission.
+  const clickFileInput = useCallback(() => {
+    if (!disabled && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, [disabled, fileInputRef]);
+
   const handleDrag = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -175,7 +183,7 @@ const validateFile = (file: File, accept: string): string | null => {
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        onClick={() => !disabled && fileInputRef.current?.click()}
+        onClick={clickFileInput}
       >
         <input
           ref={fileInputRef}
@@ -184,7 +192,7 @@ const validateFile = (file: File, accept: string): string | null => {
           multiple={multiple}
           accept={accept}
           onChange={handleFileSelect}
-          className="hidden"
+          className="sr-only"
           disabled={disabled}
         />
         
@@ -203,7 +211,7 @@ const validateFile = (file: File, accept: string): string | null => {
             variant="outline" 
             size="lg" 
             leftIcon={<Upload className="w-4 h-4" />}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={clickFileInput}
             disabled={disabled || isUploading}
           >
             Select Files

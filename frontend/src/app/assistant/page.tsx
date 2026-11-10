@@ -47,12 +47,13 @@ function AssistantPageContent() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; retryable: boolean } | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
   const [selectedMessageCitations, setSelectedMessageCitations] = useState<RetrievalSourceResponse[] | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
 
   const loadConversations = async () => {
     try {
@@ -114,6 +115,7 @@ function AssistantPageContent() {
     
     const userMessage = input.trim();
     setInput("");
+    setLastUserMessage(userMessage);
     setIsLoading(true);
     setError(null);
 
@@ -150,10 +152,37 @@ function AssistantPageContent() {
         responseType: response.response_type,
       };
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (err: unknown) {
-      const apiError = err as { detail?: string };
-      setError(apiError.detail || "Failed to send message");
-      setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
+      } catch (err: unknown) {
+      // Keep the user's message - don't remove it on failure.
+      const apiError = err as { status?: number; detail?: string };
+      let errorMessage: string;
+      let isRetryable = false;
+
+      if (apiError.status === 503 || apiError.status === 429) {
+        errorMessage =
+          "The AI service is temporarily busy. Your message has been saved in this chat. Please try again shortly.";
+        isRetryable = true;
+      } else if (apiError.status === 401) {
+        errorMessage = "Your session has expired. Please log in again.";
+      } else if (apiError.status === 403) {
+        errorMessage = "You don't have permission to perform this action.";
+      } else if (apiError.status === 404) {
+        errorMessage = "The requested resource was not found.";
+      } else if (apiError.status === 422) {
+        errorMessage = "Invalid request. Please check your input and try again.";
+      } else if (apiError.status && apiError.status >= 500) {
+        errorMessage =
+          "The server encountered an error. Please try again later.";
+      } else if (err instanceof NetworkError) {
+        errorMessage =
+          "Unable to connect to the server. Please check your connection and try again.";
+        isRetryable = true;
+      } else {
+        errorMessage =
+          apiError.detail || "Failed to send message. Please try again.";
+      }
+
+      setError({ message: errorMessage, retryable: isRetryable });
     } finally {
       setIsLoading(false);
     }
@@ -332,9 +361,15 @@ function AssistantPageContent() {
               <div className="px-4 pb-4">
                 <ErrorState
                   title="Error"
-                  message={error}
-                  onRetry={() => setError(null)}
-                  retryLabel="Dismiss"
+                  message={error.message}
+                  onRetry={() => {
+                    setError(null);
+                    if (error.retryable && lastUserMessage) {
+                      setInput(lastUserMessage);
+                      sendMessage();
+                    }
+                  }}
+                  retryLabel={error.retryable ? "Retry" : "Dismiss"}
                   alignment="center"
                 />
               </div>

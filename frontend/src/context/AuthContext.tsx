@@ -15,14 +15,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEV_USER = {
-  email: "demo@sarkarsetu.ai",
-  password: "DemoPass123!",
-  full_name: "Demo User"
-};
-
-const isDev = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_DEV_MODE === "true";
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,37 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const devLogin = useCallback(async (): Promise<MeResponse | null> => {
-    if (!isDev) return null;
-    
-    try {
-      // Try to login first
-      console.log("Dev login: attempting login...");
-      const loginResponse = await api.login({ email: DEV_USER.email, password: DEV_USER.password });
-      console.log("Dev login response:", loginResponse);
-      if (loginResponse.user) {
-        return loginResponse.user;
-      }
-    } catch (err) {
-      console.log("Dev login failed, trying register:", err);
-    }
-    
-    try {
-      console.log("Dev login: attempting register...");
-      const registerResponse = await api.register({ email: DEV_USER.email, password: DEV_USER.password, full_name: DEV_USER.full_name });
-      console.log("Dev register response:", registerResponse);
-      if (registerResponse.user) {
-        return registerResponse.user;
-      }
-      // Fallback to refresh
-      const userData = await api.me();
-      return userData;
-    } catch (err) {
-      console.log("Dev register failed:", err);
-      return null;
-    }
-  }, []);
-
   useEffect(() => {
     let mounted = true;
     const initAuth = async () => {
@@ -77,26 +38,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             userData = await api.me();
           } catch {
-            // Stored access token is stale/unusable; fall through to dev login
-            // instead of leaving the app stuck in its loading state.
+            // Stored access token is stale/unusable; clear and let the user log in.
             api.clearTokens();
           }
         }
 
-        if (!userData && isDev) {
-          userData = await devLogin();
-        }
-
         if (mounted) setUser(userData);
       } finally {
-        // No matter what happened (network error, refresh failure, unexpected
-        // exception) the global loading flag must be released.
+        // Always release the loading flag so the UI can render.
         if (mounted) setIsLoading(false);
       }
     };
     initAuth();
     return () => { mounted = false; };
-  }, [devLogin]);
+  }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
     const response = await api.login({ email, password });

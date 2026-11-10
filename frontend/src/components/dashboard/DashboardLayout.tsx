@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { MobileDrawer } from "@/components/layout/MobileDrawer";
 import { useAuth } from "@/context/AuthContext";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 const PAGE_META: Record<string, { title: string; breadcrumb?: string }> = {
@@ -43,6 +44,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   const meta = getPageMeta(pathname);
 
@@ -65,6 +67,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       <ShellMessage
         title="Sign in required"
         description="Please sign in to access your SarkarSetu workspace."
+        onSignIn={() => router.replace("/login")}
       />
     );
   }
@@ -94,6 +97,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           email={user.email}
           onOpenMenu={() => setDrawerOpen(true)}
           onLogout={handleLogout}
+          menuTriggerRef={menuTriggerRef}
         />
 
         <main id="main-content" className="min-w-0 flex-1">
@@ -109,6 +113,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         userName={displayName}
         email={user.email}
         onLogout={handleLogout}
+        menuTriggerRef={menuTriggerRef}
       />
     </div>
   );
@@ -118,10 +123,12 @@ function ShellMessage({
   title,
   description,
   loading = false,
+  onSignIn,
 }: {
   title: string;
   description?: string;
   loading?: boolean;
+  onSignIn?: () => void;
 }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-bg-primary px-6">
@@ -131,6 +138,16 @@ function ShellMessage({
         </div>
         <h1 className="font-heading text-xl font-bold text-text-primary">{title}</h1>
         {description && <p className="mt-2 text-sm text-text-muted">{description}</p>}
+        {onSignIn && (
+          <Button
+            variant="lime"
+            size="md"
+            onClick={onSignIn}
+            className="mt-5 w-full sm:w-auto"
+          >
+            Sign in
+          </Button>
+        )}
         {loading && <LoadingState variant="dots" size="md" className="mt-5" />}
       </div>
     </div>

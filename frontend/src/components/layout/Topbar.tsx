@@ -23,6 +23,8 @@ export interface TopbarProps {
   email?: string;
   onOpenMenu?: () => void;
   onLogout?: () => void | Promise<void>;
+  /** Ref to the menu trigger button for focus management. */
+  menuTriggerRef?: React.RefObject<HTMLButtonElement>;
 }
 
 export function Topbar({
@@ -34,6 +36,7 @@ export function Topbar({
   email,
   onOpenMenu,
   onLogout,
+  menuTriggerRef,
 }: TopbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -97,10 +100,14 @@ export function Topbar({
     <header className="sticky top-0 z-30 flex h-16 flex-shrink-0 items-center gap-3 border-b border-border bg-bg-elevated px-4 sm:px-6 lg:px-8">
       {/* Mobile drawer trigger */}
       <button
+        ref={menuTriggerRef}
         type="button"
         onClick={onOpenMenu}
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep-rose lg:hidden"
         aria-label="Open navigation menu"
+        aria-haspopup="true"
+        aria-expanded={menuOpen}
+        aria-controls="mobile-drawer"
       >
         <Menu className="h-5 w-5" aria-hidden="true" />
       </button>

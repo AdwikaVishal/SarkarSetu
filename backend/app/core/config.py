@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # External APIs
     gemini_api_key: str = Field(validation_alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.5-flash", validation_alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.8-flash", validation_alias="GEMINI_MODEL")
     gemini_temperature: float = Field(default=0.7, validation_alias="GEMINI_TEMPERATURE")
     gemini_max_output_tokens: int = Field(default=8192, validation_alias="GEMINI_MAX_OUTPUT_TOKENS")
     gemini_timeout_seconds: int = Field(default=30, validation_alias="GEMINI_TIMEOUT_SECONDS")

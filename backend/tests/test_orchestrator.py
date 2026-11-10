@@ -31,6 +31,7 @@ from app.services.ai.exceptions import (
     AIResponseValidationError,
     AIServiceUnavailableError,
 )
+from app.services.ai.providers import ProviderResult, ProviderStatus
 from app.services.intent.intent_classifier import IntentClassifier
 from app.services.orchestrator.orchestrator import SarkarSetuOrchestrator
 
@@ -45,6 +46,15 @@ def mock_ai_service() -> MagicMock:
     """Create a mocked AIService."""
     service = MagicMock(spec=AIService)
     service._is_available.return_value = True
+    # Default: generate_response returns a successful ProviderResult
+    service.generate_response = AsyncMock(
+        return_value=ProviderResult(
+            text="Mock AI response.",
+            provider="gemini",
+            status=ProviderStatus.SUCCESS,
+            fallback_used=False,
+        )
+    )
     return service
 
 
@@ -212,10 +222,12 @@ class TestOrchestratorNewConversation:
         )
 
         # Setup: AI response generation
-        mock_ai_service.generate_structured_output = AsyncMock(
-            return_value=MagicMock(
-                response_text="Hello! How can I help you today?",
-                confidence=0.95,
+        mock_ai_service.generate_response = AsyncMock(
+            return_value=ProviderResult(
+                text="Hello! How can I help you today?",
+                provider="gemini",
+                status=ProviderStatus.SUCCESS,
+                fallback_used=False,
             )
         )
 
@@ -289,10 +301,12 @@ class TestOrchestratorNewConversation:
         )
 
         # Setup: AI response
-        mock_ai_service.generate_structured_output = AsyncMock(
-            return_value=MagicMock(
-                response_text="Here is general guidance.",
-                confidence=0.9,
+        mock_ai_service.generate_response = AsyncMock(
+            return_value=ProviderResult(
+                text="Here is general guidance.",
+                provider="gemini",
+                status=ProviderStatus.SUCCESS,
+                fallback_used=False,
             )
         )
 
@@ -365,7 +379,7 @@ class TestIntentRouting:
         assert response.response_type == ResponseType.GREETING
         assert "Hello" in response.assistant_response
         # AI service should not be called for greetings
-        mock_ai_service.generate_structured_output.assert_not_called()
+        mock_ai_service.generate_response.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_general_question_routes_to_ai(
@@ -397,10 +411,12 @@ class TestIntentRouting:
         mock_intent_classifier.classify_and_extract = AsyncMock(
             return_value=(_make_intent_result(primary_intent=Intent.GENERAL_QUESTION), [])
         )
-        mock_ai_service.generate_structured_output = AsyncMock(
-            return_value=MagicMock(
-                response_text="General guidance response.",
-                confidence=0.85,
+        mock_ai_service.generate_response = AsyncMock(
+            return_value=ProviderResult(
+                text="General guidance response.",
+                provider="gemini",
+                status=ProviderStatus.SUCCESS,
+                fallback_used=False,
             )
         )
 
@@ -412,7 +428,7 @@ class TestIntentRouting:
 
         assert response.response_type == ResponseType.GENERAL_GUIDANCE
         assert response.assistant_response == "General guidance response."
-        mock_ai_service.generate_structured_output.assert_called_once()
+        mock_ai_service.generate_response.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_out_of_scope_routes_to_refusal(
@@ -754,8 +770,17 @@ class TestFailureHandling:
         mock_intent_classifier: MagicMock,
         mock_ai_service: MagicMock,
     ):
-        """Test that AI service unavailability returns a safe error response."""
+        """Test that AI service unavailability falls back to local provider."""
         mock_ai_service._is_available.return_value = False
+        mock_ai_service.generate_response = AsyncMock(
+            return_value=ProviderResult(
+                text="Using SarkarSetu's offline knowledge base. I couldn't find specific information about that topic.",
+                provider="local_fallback",
+                status=ProviderStatus.SUCCESS,
+                fallback_used=True,
+                confidence=0.0,
+            )
+        )
 
         mock_conversation = MagicMock()
         mock_conversation.id = uuid4()
@@ -785,8 +810,10 @@ class TestFailureHandling:
             user_id=uuid4(),
         )
 
-        assert response.response_type == ResponseType.ERROR
-        assert "not configured" in response.assistant_response.lower()
+        # With fallback, AI unavailability returns local provider response, not ERROR
+        assert response.response_type == ResponseType.GENERAL_GUIDANCE
+        assert response.provider == "local_fallback"
+        assert response.fallback_used is True
 
     @pytest.mark.asyncio
     async def test_classification_error_degrades_gracefully(
@@ -796,7 +823,14 @@ class TestFailureHandling:
         mock_intent_classifier: MagicMock,
         mock_clarification_service: MagicMock,
     ):
-        """Test that classification errors don't crash the pipeline."""
+        """Test that classification errors don't crash the pipeline.
+
+        When intent classification fails (e.g. Gemini unavailable),
+        the pipeline should attempt local knowledge retrieval before
+        returning an uncertain intent response. This ensures that valid
+        government-scheme questions still get answered even when AI
+        services are unavailable.
+        """
         mock_conversation = MagicMock()
         mock_conversation.id = uuid4()
         mock_conversation.business_profile_id = None
@@ -825,7 +859,12 @@ class TestFailureHandling:
             user_id=uuid4(),
         )
 
-        assert response.response_type == ResponseType.ERROR
+        # When classification fails, the pipeline should not crash.
+        # It should attempt local knowledge retrieval; since "Hello"
+        # doesn't match any schemes, it falls back to uncertain intent.
+        assert response.response_type == ResponseType.INTENT_UNCERTAIN
+        # The uncertain intent response should be returned, not an error.
+        assert "I'm not entirely sure" in response.assistant_response
 
     @pytest.mark.asyncio
     async def test_structured_output_validation_error(
@@ -862,7 +901,7 @@ class TestFailureHandling:
                 [],
             )
         )
-        mock_ai_service.generate_structured_output = AsyncMock(
+        mock_ai_service.generate_response = AsyncMock(
             side_effect=AIResponseValidationError("Invalid JSON from model")
         )
 

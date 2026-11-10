@@ -35,6 +35,9 @@ interface ChatMessage {
   clarificationQuestion?: string;
   responseType?: string;
   citations?: RetrievalSourceResponse[];
+  provider?: string | null;
+  fallbackUsed?: boolean;
+  confidence?: number | null;
 }
 
 function AssistantPageContent() {
@@ -75,14 +78,23 @@ function AssistantPageContent() {
     setError(null);
     try {
       const response = await api.getMessages(conversationId, 50, 0);
-      const chatMessages: ChatMessage[] = response.items.map(msg => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        timestamp: new Date(msg.created_at),
-        intent: msg.intent || undefined,
-        metadata: msg.message_metadata as Record<string, unknown> | undefined,
-      }));
+      const chatMessages: ChatMessage[] = response.items.map(msg => {
+        const metadata = msg.message_metadata as Record<string, unknown> | undefined;
+        return {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+          intent: msg.intent || undefined,
+          clarificationRequired: metadata?.clarification_required as boolean | undefined,
+          clarificationQuestion: metadata?.clarification_question as string | undefined,
+          responseType: metadata?.response_type as string | undefined,
+          provider: metadata?.provider as string | undefined,
+          fallbackUsed: metadata?.fallback_used as boolean | undefined,
+          confidence: metadata?.confidence_score as number | undefined,
+          metadata,
+        };
+      });
       setMessages(chatMessages);
     } catch (err: unknown) {
       const apiError = err as { detail?: string };
@@ -150,6 +162,9 @@ function AssistantPageContent() {
         clarificationRequired: response.clarification_required,
         clarificationQuestion: response.clarification_question || undefined,
         responseType: response.response_type,
+        provider: response.provider || undefined,
+        fallbackUsed: response.fallback_used || undefined,
+        confidence: response.confidence || undefined,
       };
       setMessages(prev => [...prev, assistantMessage]);
       } catch (err: unknown) {
@@ -470,7 +485,7 @@ function MessageBubble({ message, onViewCitations }: { message: ChatMessage; onV
         "max-w-[80%] rounded-2xl px-4 py-3",
         isUser
           ? "bg-accent-lime/10 text-text-primary rounded-tr-sm"
-          : "bg-accent-purple/10 text-text-inverse rounded-tl-sm"
+          : "bg-accent-purple/10 text-text-primary rounded-tl-sm"
       )}>
         <div className="prose prose-sm max-w-none text-inherit">
           {message.content.split("\n").map((line, i) => (
@@ -493,6 +508,11 @@ function MessageBubble({ message, onViewCitations }: { message: ChatMessage; onV
             {message.clarificationQuestion && (
               <p className="text-text-muted">{message.clarificationQuestion}</p>
             )}
+            {message.fallbackUsed && (
+              <Badge variant="outline" size="sm" className="text-text-muted">
+                Local knowledge base
+              </Badge>
+            )}
           </div>
         )}
         
@@ -508,6 +528,12 @@ function MessageBubble({ message, onViewCitations }: { message: ChatMessage; onV
             </button>
           )}
         </div>
+        {message.fallbackUsed && (
+          <p className="mt-2 text-xs text-text-muted italic">
+            Using SarkarSetu&apos;s offline knowledge base. Some information may not
+            reflect the latest government updates.
+          </p>
+        )}
       </div>
     </div>
   );

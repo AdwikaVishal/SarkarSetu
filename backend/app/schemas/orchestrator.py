@@ -112,6 +112,20 @@ class ChatMessageResponse(BaseModel):
     response_type: ResponseType
     conversation_status: str
     ai_model: str | None = None
+    provider: str | None = Field(
+        default=None,
+        description="AI provider used (gemini or local_fallback).",
+    )
+    fallback_used: bool = Field(
+        default=False,
+        description="Whether the local fallback provider was used.",
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the response.",
+    )
     created_at: datetime
 
 

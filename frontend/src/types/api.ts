@@ -225,6 +225,9 @@ export interface ChatMessageResponse {
   response_type: ResponseType;
   conversation_status: "active" | "completed" | "archived";
   ai_model: string | null;
+  provider: string | null;
+  fallback_used: boolean;
+  confidence: number | null;
   created_at: string;
 }
 

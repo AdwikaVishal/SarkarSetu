@@ -70,6 +70,10 @@ class PipelineContext:
     errors: list[str] = field(default_factory=list)
     ai_model: str | None = None
     token_usage: dict[str, object] | None = None
+    provider: str | None = None
+    fallback_used: bool = False
+    confidence: float | None = None
+    retrieval_sources: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def elapsed_ms(self) -> float:

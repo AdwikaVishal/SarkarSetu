@@ -4,9 +4,10 @@ Provides high-level AI operations:
 - generate_text: Generate text from a prompt.
 - generate_structured_output: Generate structured output validated against a Pydantic model.
 - generate_json: Generate JSON output parsed into a dict.
+- generate_response: Generate a response using the multi-provider router (Gemini with local fallback).
 - health_check: Check AI service availability.
 
-All methods are async and delegate to the Gemini client.
+All methods are async and delegate to the appropriate provider.
 """
 
 import json
@@ -21,6 +22,8 @@ from app.services.ai.exceptions import (
     AIServiceUnavailableError,
 )
 from app.services.ai.gemini_client import GeminiClient
+from app.services.ai.local_knowledge import get_knowledge_base
+from app.services.ai.provider_router import ProviderRouter
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,17 @@ class AIService:
             self._client: GeminiClient | None = GeminiClient()
         except AIServiceUnavailableError:
             self._client = None
+        self._provider_router: ProviderRouter | None = None
+
+    @property
+    def provider_router(self) -> ProviderRouter:
+        """Return the provider router, initializing it lazily."""
+        if self._provider_router is None:
+            self._provider_router = ProviderRouter(
+                ai_service=self,
+                knowledge_base=get_knowledge_base(),
+            )
+        return self._provider_router
 
     def _is_available(self) -> bool:
         """Check if AI service is configured and available."""
@@ -276,18 +290,60 @@ class AIService:
         )
         return validated
 
+    async def generate_response(
+        self,
+        message: str,
+        *,
+        conversation_history: list[dict[str, str]] | None = None,
+        business_context: str | None = None,
+        system_instruction: str | None = None,
+        temperature: float | None = None,
+        max_output_tokens: int | None = None,
+    ):
+        """Generate a response using the multi-provider router.
+
+        Attempts Gemini first with retry logic for transient errors.
+        If Gemini fails or is unavailable, falls back to the local
+        knowledge-based provider. Never raises exceptions for normal
+        unavailability - returns a ProviderResult with error status.
+
+        Args:
+            message: The user's message text.
+            conversation_history: Optional recent conversation turns.
+            business_context: Optional business profile context.
+            system_instruction: Optional system-level instruction.
+            temperature: Sampling temperature.
+            max_output_tokens: Maximum output tokens.
+
+        Returns:
+            A ProviderResult with normalized response data including
+            provider name, fallback status, and metadata.
+        """
+        return await self.provider_router.generate_response(
+            message=message,
+            conversation_history=conversation_history,
+            business_context=business_context,
+            system_instruction=system_instruction,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+
+    def get_provider_status(self) -> dict[str, Any]:
+        """Return availability status of all providers."""
+        return self.provider_router.get_provider_status()
+
     async def health_check(self) -> dict[str, object]:
         """Check AI service availability without generating content.
 
         Returns:
-            Dict with service status information:
-            - enabled: Whether AI is configured and enabled.
-            - model: Configured model name.
-            - available: Whether the client can be initialized.
+            Dict with service status information including provider
+            availability details.
         """
         available = self._is_available()
+        provider_status = self.get_provider_status()
         return {
             "enabled": settings.gemini_enabled,
             "model": settings.gemini_model if available else None,
             "available": available,
+            "providers": provider_status,
         }

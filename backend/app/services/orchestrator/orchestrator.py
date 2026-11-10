@@ -40,6 +40,12 @@ from app.services.ai.exceptions import (
     AIResponseValidationError,
     AIServiceUnavailableError,
 )
+from app.services.ai.local_knowledge import get_knowledge_base
+from app.services.ai.providers import (
+    LocalFallbackProvider,
+    ProviderResult,
+    ProviderStatus,
+)
 from app.services.conversation.clarification_service import ClarificationService
 from app.services.conversation.context_manager import (
     ConversationContextManager,
@@ -324,11 +330,14 @@ class SarkarSetuOrchestrator:
             ctx.intent_result = intent_result
             ctx.entities = entities
         except AIServiceUnavailableError as exc:
-            ctx.errors.append(f"AI service unavailable: {exc}")
+            ctx.warnings.append(f"AI service unavailable for intent classification: {exc}")
+            ctx.intent_result = self._empty_intent()
         except AIError as exc:
-            ctx.errors.append(f"AI error: {exc.message}")
+            ctx.warnings.append(f"AI error during classification: {exc.message}")
+            ctx.intent_result = self._empty_intent()
         except Exception as exc:  # noqa: BLE001
-            ctx.errors.append(f"Classification failed: {exc}")
+            ctx.warnings.append(f"Classification failed: {exc}")
+            ctx.intent_result = self._empty_intent()
 
     # ------------------------------------------------------------------
     # Stage 7 — Agent dispatch
@@ -486,6 +495,20 @@ class SarkarSetuOrchestrator:
             return
 
         if ctx.response_type == ResponseType.INTENT_UNCERTAIN:
+            # Before declaring intent uncertain, attempt local knowledge
+            # retrieval so that valid government-scheme questions still
+            # get answered even when intent classification fails.
+            local_result = await self._try_local_knowledge_retrieval(ctx)
+            if local_result is not None:
+                ctx.assistant_response_text = local_result.text
+                ctx.provider = local_result.provider
+                ctx.fallback_used = local_result.fallback_used
+                ctx.confidence = local_result.confidence
+                if local_result.sources:
+                    ctx.retrieval_sources = local_result.sources
+                ctx.response_type = ResponseType.GENERAL_GUIDANCE
+                return
+
             ctx.assistant_response_text = (
                 self.response_builder.build_uncertain_intent_response(ctx.message)
             )
@@ -512,19 +535,15 @@ class SarkarSetuOrchestrator:
             )
             return
 
-        # Default: general guidance via AI
+        # Default: general guidance via AI with fallback
         await self._generate_ai_response(ctx)
 
     async def _generate_ai_response(self, ctx: PipelineContext) -> None:
-        """Generate an AI-powered assistant response."""
-        if not self.ai_service._is_available():
-            ctx.assistant_response_text = (
-                "I'm sorry, the AI service is not configured. "
-                "Please contact support to enable AI assistance."
-            )
-            ctx.response_type = ResponseType.ERROR
-            return
+        """Generate an AI-powered assistant response using multi-provider router.
 
+        Attempts Gemini first, falls back to local knowledge-based provider
+        if Gemini is unavailable or fails. Records which provider was used.
+        """
         conversation_context = self._format_context(ctx)
         business_context = None
         if ctx.conversation and ctx.conversation.business_profile_id:
@@ -540,31 +559,46 @@ class SarkarSetuOrchestrator:
             warnings=ctx.warnings,
         )
 
+        system_instruction = self._system_instruction()
+
         try:
-            result = await self.ai_service.generate_structured_output(
-                prompt=prompt,
-                response_model=AssistantResponse,
+            result = await self.ai_service.generate_response(
+                message=ctx.message,
+                conversation_history=(
+                    ctx.context_dict.get("messages", [])
+                    if isinstance(ctx.context_dict.get("messages"), list)
+                    else None
+                ),
+                business_context=business_context,
+                system_instruction=system_instruction,
                 temperature=0.3,
                 max_output_tokens=1024,
-                system_instruction=self._system_instruction(),
             )
-            ctx.assistant_response_text = result.response_text
-            ctx.ai_model = "gemini"
-            if result.confidence is not None:
+
+            # result is a ProviderResult from the multi-provider router
+            ctx.assistant_response_text = result.text
+            ctx.ai_model = result.provider
+            ctx.provider = result.provider
+            ctx.fallback_used = result.fallback_used
+            ctx.confidence = result.confidence
+
+            if result.sources:
+                ctx.retrieval_sources = result.sources
+
+            if result.warnings:
+                ctx.warnings.extend(result.warnings)
+
+            if result.status == ProviderStatus.ERROR:
+                ctx.response_type = ResponseType.ERROR
                 ctx.warnings.append(
-                    f"AI response confidence: {result.confidence:.2f}"
+                    "Both AI service and local knowledge base are unavailable. "
+                    "Please try again later."
                 )
+
         except AIServiceUnavailableError as exc:
             ctx.assistant_response_text = (
-                "I'm sorry, the AI service is not available right now. "
-                "Please try again later."
-            )
-            ctx.response_type = ResponseType.ERROR
-            ctx.warnings.append(str(exc))
-        except AIResponseValidationError as exc:
-            ctx.assistant_response_text = (
-                "I'm sorry, I couldn't generate a proper response. "
-                "Please try rephrasing your question."
+                "I'm sorry, the AI service is not configured. "
+                "Please contact support to enable AI assistance."
             )
             ctx.response_type = ResponseType.ERROR
             ctx.warnings.append(str(exc))
@@ -575,6 +609,91 @@ class SarkarSetuOrchestrator:
             )
             ctx.response_type = ResponseType.ERROR
             ctx.warnings.append(str(exc))
+
+    async def _try_local_knowledge_retrieval(self, ctx: PipelineContext) -> ProviderResult | None:
+        try:
+            kb = get_knowledge_base()
+            result = await kb.retrieve(ctx.message)
+            matched_schemes = result.get("matched_schemes", [])
+            if not matched_schemes:
+                return None
+            confidence = result.get("confidence", 0.0)
+            match_type = result.get("match_type", "keyword")
+            lines = []
+            if match_type == "exact":
+                lines.append(f"## {matched_schemes[0].get('name', 'Scheme Information')}")
+            else:
+                lines.append("## Relevant Government Schemes")
+            lines.append("")
+            lines.append(
+                "*Using SarkarSetu's offline knowledge base. Some information may not reflect the latest government updates.*"
+            )
+            lines.append("")
+            for scheme in matched_schemes[:3]:
+                lines.append(f"### {scheme.get('name', 'Unknown Scheme')}")
+                lines.append("")
+                if scheme.get("description"):
+                    lines.append(f"**Description:** {scheme['description']}")
+                    lines.append("")
+                if scheme.get("eligibility"):
+                    lines.append(f"**Eligibility:** {scheme['eligibility']}")
+                    lines.append("")
+                if scheme.get("benefits"):
+                    lines.append(f"**Benefits:** {scheme['benefits']}")
+                    lines.append("")
+                if scheme.get("required_documents"):
+                    docs = scheme["required_documents"]
+                    if isinstance(docs, list):
+                        lines.append("**Required Documents:**")
+                        for doc in docs:
+                            lines.append(f"  - {doc}")
+                    else:
+                        lines.append(f"**Required Documents:** {docs}")
+                    lines.append("")
+                if scheme.get("application_procedure"):
+                    lines.append(f"**Application Procedure:** {scheme['application_procedure']}")
+                    lines.append("")
+                if scheme.get("official_url"):
+                    lines.append(f"**Official URL:** {scheme['official_url']}")
+                    lines.append("")
+                if scheme.get("official_source"):
+                    lines.append(f"**Source:** {scheme['official_source']}")
+                    lines.append("")
+                lines.append("---")
+                lines.append("")
+            lines.append(
+                "This information is for general guidance only and does not constitute official eligibility confirmation or government approval. Please verify details on the official government website before applying."
+            )
+            text = "\n".join(lines)
+            sources = [
+                {
+                    "source_title": s.get("name"),
+                    "issuing_authority": s.get("issuing_authority"),
+                    "source_url": s.get("official_url"),
+                    "relevant_excerpt": s.get("description"),
+                    "retrieval_score": s.get("confidence"),
+                }
+                for s in matched_schemes
+            ]
+            return ProviderResult(
+                text=text,
+                provider="local_fallback",
+                status="success",
+                confidence=confidence,
+                sources=sources,
+                fallback_used=True,
+                requires_verification=True,
+                warnings=[
+                    "Using SarkarSetu's offline knowledge base. Some information may not reflect the latest government updates."
+                ],
+                metadata={"match_type": match_type},
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Local knowledge retrieval failed for uncertain intent", extra={"error": str(exc)}
+            )
+            return None
 
     def _format_context(self, ctx: PipelineContext) -> str:
         """Format conversation context as a string for prompts."""
@@ -645,7 +764,11 @@ class SarkarSetuOrchestrator:
             "intent": intent_name,
             "confidence": confidence,
             "clarification_required": ctx.clarification_state is not None,
+            "provider": ctx.provider,
+            "fallback_used": ctx.fallback_used,
         }
+        if ctx.confidence is not None:
+            metadata["confidence_score"] = ctx.confidence
         if ctx.entities:
             metadata["entities"] = [
                 {
@@ -658,6 +781,8 @@ class SarkarSetuOrchestrator:
             ]
         if ctx.ai_model:
             metadata["ai_model"] = ctx.ai_model
+        if ctx.retrieval_sources:
+            metadata["retrieval_sources"] = ctx.retrieval_sources
         if ctx.agent_result:
             metadata["agent_name"] = ctx.agent_result.agent_name
             metadata["agent_status"] = ctx.agent_result.status.value
@@ -764,6 +889,9 @@ class SarkarSetuOrchestrator:
             response_type=ctx.response_type,
             conversation_status=conversation_status,
             ai_model=ctx.ai_model,
+            provider=ctx.provider,
+            fallback_used=ctx.fallback_used,
+            confidence=ctx.confidence,
             created_at=datetime.now(UTC),
         )
 

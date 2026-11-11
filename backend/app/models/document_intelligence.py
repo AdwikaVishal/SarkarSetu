@@ -9,7 +9,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from app.database.types import GUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -30,25 +31,25 @@ class DocumentExtraction(Base):
     __tablename__ = "document_extractions"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
     document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("uploaded_documents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         unique=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     business_profile_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("business_profiles.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -148,12 +149,12 @@ class DocumentField(Base):
     __tablename__ = "document_fields"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
     extraction_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("document_extractions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -202,7 +203,7 @@ class DocumentField(Base):
         nullable=True,
     )
     applied_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
@@ -243,24 +244,24 @@ class DocumentReviewItem(Base):
     __tablename__ = "document_review_items"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
     extraction_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("document_extractions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("uploaded_documents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     business_profile_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("business_profiles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -307,7 +308,7 @@ class DocumentReviewItem(Base):
         nullable=True,
     )
     resolved_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
@@ -360,7 +361,7 @@ class DocumentAuditEvent(Base):
     __tablename__ = "document_audit_events"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
@@ -369,25 +370,25 @@ class DocumentAuditEvent(Base):
         nullable=False,
     )
     document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("uploaded_documents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     business_profile_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("business_profiles.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     extraction_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("document_extractions.id", ondelete="SET NULL"),
         nullable=True,
     )

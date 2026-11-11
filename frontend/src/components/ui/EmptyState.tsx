@@ -1,61 +1,65 @@
 "use client";
 
-import { type HTMLAttributes } from "react";
+import { type ReactNode, type ComponentType, isValidElementType } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./Button";
-import { LucideIcon } from "lucide-react";
 
-export interface EmptyStateProps extends HTMLAttributes<HTMLDivElement> {
-  icon?: LucideIcon;
+export interface EmptyStateProps {
+  icon: ReactNode | ComponentType<{ className?: string }>;
   title: string;
-  description?: string;
+  description: string;
   action?: {
     label: string;
     onClick: () => void;
-    variant?: "primary" | "secondary" | "outline" | "ghost" | "lime" | "purple";
+    variant?: "primary" | "secondary" | "outline" | "ghost" | "lime" | "purple" | "error";
   };
   alignment?: "center" | "left";
+  className?: string;
 }
 
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  alignment = "center",
-  className,
-  ...props
+export function EmptyState({ 
+  icon, 
+  title, 
+  description, 
+  action, 
+  alignment = "center", 
+  className 
 }: EmptyStateProps) {
-  const alignments = {
-    center: "text-center items-center",
-    left: "text-left items-start",
+  // Handle icon rendering: component, element, or string
+  const renderIcon = () => {
+    if (icon == null) return null;
+    
+    // If it's a valid React component type (function/class/ForwardRefExoticComponent)
+    if (isValidElementType(icon)) {
+      const IconComponent = icon;
+      return <IconComponent className="w-8 h-8" />;
+    }
+    
+    // If it's already a React element, render it directly
+    if (typeof icon === "object" && icon !== null && "$$typeof" in icon) {
+      return icon;
+    }
+    
+    // Otherwise render as-is (string, number, etc.)
+    return icon;
   };
-
+  
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 px-4 py-8",
-        alignments[alignment],
-        className
-      )}
-      {...props}
-    >
-      {Icon && (
-        <div className="w-12 h-12 rounded-full bg-accent-lime/10 flex items-center justify-center text-accent-lime">
-          <Icon className="w-6 h-6" aria-hidden="true" />
-        </div>
-      )}
-      <div>
-        <h3 className="font-heading font-bold text-lg text-text-primary sm:text-xl">{title}</h3>
-        {description && (
-          <p className="mt-1.5 max-w-md text-sm text-text-muted">{description}</p>
-        )}
+    <div className={cn(
+      "py-12 px-6",
+      alignment === "center" ? "text-center" : "text-left",
+      className
+    )}>
+      <div className={cn(
+        "w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 text-text-muted",
+        alignment === "left" && "mx-0"
+      )}>
+        {renderIcon()}
       </div>
+      <h3 className="font-heading font-bold text-lg text-text-primary mb-2">{title}</h3>
+      <p className="text-text-muted mb-6">{description}</p>
       {action && (
-        <Button
-          variant={action.variant || "lime"}
-          onClick={action.onClick}
-        >
+        <Button variant={action.variant || "lime"} onClick={action.onClick}>
           {action.label}
         </Button>
       )}
@@ -63,51 +67,36 @@ export function EmptyState({
   );
 }
 
-export interface ErrorStateProps extends HTMLAttributes<HTMLDivElement> {
-  title?: string;
+export interface ErrorStateProps {
+  title: string;
   message: string;
-  code?: string | number;
   onRetry?: () => void;
   retryLabel?: string;
   alignment?: "center" | "left";
+  className?: string;
 }
 
-export function ErrorState({
-  title = "Something went wrong",
-  message,
-  code,
-  onRetry,
-  retryLabel = "Try again",
-  alignment = "center",
-  className,
-  ...props
+export function ErrorState({ 
+  title, 
+  message, 
+  onRetry, 
+  retryLabel = "Try Again", 
+  alignment = "center", 
+  className 
 }: ErrorStateProps) {
-  const alignments = {
-    center: "text-center items-center",
-    left: "text-left items-start",
-  };
-
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-4 py-12 px-6 bg-error/5 border border-error/20 rounded-[24px]",
-        alignments[alignment],
-        className
-      )}
-      {...props}
-    >
-      <div className="w-12 h-12 rounded-full bg-error/10 flex items-center justify-center text-error">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <div className={cn(
+      "py-12 px-6",
+      alignment === "center" ? "text-center" : "text-left",
+      className
+    )}>
+      <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center mx-auto mb-6 text-error">
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
       </div>
-      <div>
-        <h3 className="font-heading font-bold text-xl text-text-primary">{title}</h3>
-        <p className="mt-1 text-text-muted">{message}</p>
-        {code && (
-          <p className="mt-2 text-xs font-mono text-text-muted">Error code: {code}</p>
-        )}
-      </div>
+      <h3 className="font-heading font-bold text-lg text-text-primary mb-2">{title}</h3>
+      <p className="text-text-muted mb-6">{message}</p>
       {onRetry && (
         <Button variant="outline" onClick={onRetry}>
           {retryLabel}

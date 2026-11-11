@@ -1,65 +1,35 @@
 "use client";
 
-import { type HTMLAttributes } from "react";
+import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export interface SectionHeadingProps extends HTMLAttributes<HTMLDivElement> {
-  eyebrow?: string;
+export interface SectionHeadingProps {
   title: string;
   subtitle?: string;
-  highlight?: string;
-  highlightColor?: "lime" | "purple";
-  alignment?: "left" | "center" | "right";
+  eyebrow?: string;
+  action?: ReactNode;
   className?: string;
 }
 
-export function SectionHeading({
-  eyebrow,
-  title,
-  subtitle,
-  highlight,
-  highlightColor = "lime",
-  alignment = "left",
-  className,
-  children,
-  ...props
-}: SectionHeadingProps) {
-  const highlightClass = highlightColor === "lime" 
-    ? "text-accent-lime" 
-    : "text-accent-purple";
-
-  const alignments = {
-    left: "text-left items-start",
-    center: "text-center items-center",
-    right: "text-right items-end",
-  };
-
+export function SectionHeading({ title, subtitle, eyebrow, action, className }: SectionHeadingProps) {
   return (
-    <div
-      className={cn("flex flex-col gap-2 max-w-4xl", alignments[alignment], className)}
-      {...props}
-    >
-      {eyebrow && (
-        <span className="font-heading text-xs font-semibold uppercase tracking-widest text-text-muted">
-          {eyebrow}
-        </span>
-      )}
-      <h2 className="font-heading text-xl font-bold tracking-tight text-text-primary sm:text-2xl">
-        {title.split(highlight || "").map((part, i) => (
-          <span key={i}>
-            {part}
-            {i < (title.split(highlight || "").length - 1) && (
-              <span className={highlightClass}>{highlight}</span>
-            )}
+    <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4", className)}>
+      <div>
+        {eyebrow && (
+          <span className="text-xs font-medium uppercase tracking-wider text-accent-lime mb-1 block">
+            {eyebrow}
           </span>
-        ))}
-      </h2>
-      {subtitle && (
-        <p className="max-w-2xl text-sm text-text-muted leading-relaxed">
-          {subtitle}
-        </p>
+        )}
+        <h2 className="font-heading font-bold text-2xl sm:text-3xl text-text-primary">{title}</h2>
+        {subtitle && (
+          <p className="mt-1 text-text-muted sm:text-lg">{subtitle}</p>
+        )}
+      </div>
+      {action && (
+        <div className="flex-shrink-0 mt-4 sm:mt-0">
+          {action}
+        </div>
       )}
-      {children}
     </div>
   );
 }

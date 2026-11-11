@@ -501,6 +501,18 @@ function DocumentsPageContent() {
     }
   }, [user, authLoading]);
 
+  // Poll for document processing status updates
+  useEffect(() => {
+    const processingDocs = documents.filter(doc => doc.status === "processing" || doc.status === "uploading" || doc.status === "pending");
+    if (processingDocs.length === 0) return;
+
+    const interval = setInterval(() => {
+      loadDocuments();
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [documents, user]);
+
   if (authLoading) {
     return (
       <DashboardLayout>

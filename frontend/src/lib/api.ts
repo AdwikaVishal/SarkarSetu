@@ -178,8 +178,10 @@ export type {
   SchemeDetail,
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const API_PREFIX = "/api/v1";
+// Use relative paths to go through Vite proxy in development
+// In production, VITE_API_URL should be set to the backend URL
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
+const API_PREFIX = import.meta.env.DEV ? "/api" : "/api/v1";
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = "sarkarsetu_access_token";

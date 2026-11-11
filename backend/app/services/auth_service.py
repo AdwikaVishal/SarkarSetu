@@ -1,4 +1,5 @@
 """Authentication service with JWT and refresh token management."""
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from jose import jwt
@@ -231,7 +232,11 @@ class AuthService:
         matching_token.revoked_at = datetime.now(UTC)
 
         # Create new tokens
-        user = await self.db.get(User, user_id)
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise TokenError("Invalid user ID format")
+        user = await self.db.get(User, user_uuid)
         if not user or not user.is_active:
             raise TokenError("User not found or inactive")
 
@@ -368,7 +373,27 @@ class AuthService:
         if not user_id:
             raise TokenError("Invalid token payload")
 
-        user = await self.db.get(User, user_id)
+        # Convert string user_id to UUID for database query
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise TokenError("Invalid user ID format")
+
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Looking up user with UUID: {user_uuid}, type: {type(user_uuid)}")
+        
+        # First try with select to verify
+        from sqlalchemy import select
+        result = await self.db.execute(select(User).where(User.id == user_uuid))
+        user = result.scalar_one_or_none()
+        logger.info(f"User found via select: {user}")
+        
+        if not user:
+            # Fallback to get
+            user = await self.db.get(User, user_uuid)
+            logger.info(f"User found via get: {user}")
         if not user:
             raise TokenError("User not found")
 

@@ -31,7 +31,7 @@ class UploadedDocumentUpdate(BaseModel):
     original_filename: str | None = Field(None, min_length=1, max_length=500)
     processing_status: str | None = Field(
         None,
-        pattern="^(pending|processing|completed|failed)$",
+        pattern="^(pending|processing|completed|failed|error)$",
     )
     document_type: str | None = Field(None, max_length=100)
     extracted_data: dict | None = None

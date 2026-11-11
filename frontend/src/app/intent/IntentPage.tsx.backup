@@ -1,0 +1,470 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
+import { SkeletonCard } from "@/components/ui/LoadingState";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ArrowRight } from "lucide-react";
+
+const INTENT_TYPES = [
+  "government_scheme_discovery",
+  "subsidy_discovery",
+  "loan_discovery",
+  "registration_discovery",
+  "scheme_eligibility",
+  "udyam_eligibility",
+  "gst_applicability",
+  "udyam_registration",
+  "gst_registration",
+  "document_guidance",
+  "document_validation",
+  "document_upload",
+  "application_guidance",
+  "compliance_guidance",
+  "tax_guidance",
+  "deadline_query",
+  "business_registration",
+  "general_guidance",
+  "greeting",
+  "out_of_scope",
+  "unknown",
+];
+
+const ENTITY_TYPES = [
+  "business_name",
+  "business_type",
+  "industry",
+  "business_stage",
+  "state",
+  "district",
+  "city",
+  "pin_code",
+  "employee_count",
+  "annual_turnover",
+  "establishment_date",
+  "products_services",
+  "operating_mode",
+  "scheme_name",
+  "registration_type",
+  "registration_number",
+  "government_department",
+  "application_reference",
+  "requested_action",
+  "requested_deadline",
+  "requested_time_period",
+  "budget",
+  "document_types",
+];
+
+function IntentPage() {
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+
+  // State
+  const [text, setText] = useState("");
+  const [classification, setClassification] = useState<
+    | { intent: string; confidence: number; entities: any[] }
+    | null
+  >(null);
+  const [analysis, setAnalysis] = useState<{
+    primaryIntent: string;
+    confidence: number;
+    confidenceLevel: "high" | "medium" | "low";
+    entities: any[];
+    requiresClarification: boolean;
+    clarificationQuestion: string | null;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Classify intent
+  const handleClassify = async () => {
+    if (!text.trim()) {
+      setError("Please enter text to analyze");
+      return;
+    }
+
+    setError(null);
+    setClassification(null);
+    setAnalysis(null);
+
+    try {
+      const result = await api.classifyIntent({ text });
+
+      setClassification({
+        intent: result.intent_detection.primary_intent,
+        confidence: result.intent_detection.confidence,
+        entities: result.intent_detection.entities,
+      });
+    } catch (err: any) {
+      setError(err.detail || "Failed to classify intent");
+    }
+  };
+
+  // Analyze intent
+  const handleAnalyze = async () => {
+    if (!text.trim()) {
+      setError("Please enter text to analyze");
+      return;
+    }
+
+    setError(null);
+    setAnalysis(null);
+
+    try {
+      const result = await api.analyzeIntent({ text });
+
+      setAnalysis({
+        primaryIntent: result.intent.primary_intent,
+        confidence: result.intent.confidence,
+        confidenceLevel: result.intent.confidence_level,
+        entities: result.entities,
+        requiresClarification: result.requires_clarification,
+        clarificationQuestion: result.clarification_question,
+      });
+    } catch (err: any) {
+      setError(err.detail || "Failed to analyze intent");
+    }
+  };
+
+  // Extract entities
+  const handleExtract = async () => {
+    if (!text.trim()) {
+      setError("Please enter text to analyze");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const result = await api.extractEntities({ text });
+      setClassification({
+        intent: "entity_extraction",
+        confidence: 1.0,
+        entities: result.entities,
+      });
+    } catch (err: any) {
+      setError(err.detail || "Failed to extract entities");
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-accent-lime border-t-transparent" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+    return (
+      <DashboardLayout>
+        <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+          <div className="text-center p-8">
+            <h2 className="font-heading font-bold text-xl text-text-primary mb-2">
+              SarkarSetu AI
+            </h2>
+            <p className="text-text-muted">
+              Application is ready. Redirecting to dashboard...
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Classification results
+  const classificationContent = classification ? (
+    <div className="space-y-4">
+      <Card variant="outlined" padding="md">
+        <CardHeader>
+          <CardTitle size="md">Intent Classification</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-1 gap-x-3 gap-y-3">
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Primary intent
+              </dt>
+              <dd>
+                <StatusBadge
+                  status={classification.intent as any}
+                  size="sm"
+                >
+                  {classification.intent}
+                </StatusBadge>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Confidence
+              </dt>
+              <dd>
+                <span className="font-medium text-text-primary">
+                  {classification.confidence.toFixed(2)}
+                </span>
+                <span className="text-xs text-text-muted">
+                  ({classification.confidence >= 0.8 ? "High" : classification.confidence >= 0.5 ? "Medium" : "Low"})
+                </span>
+              </dd>
+            </div>
+            {classification.entities && classification.entities.length > 0 && (
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                  Entities extracted
+                </dt>
+                <dd>
+                  {classification.entities.map((entity: any, idx: number) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs"
+                      style={{ background: "bg-accent-lime/20", color: "text-accent-lime" }}
+                    >
+                      {entity.entity_type}: {entity.value}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </CardContent>
+      </Card>
+    </div>
+  ) : null;
+
+  // Analysis results
+  const analysisContent = analysis ? (
+    <div className="space-y-4">
+      <Card variant="outlined" padding="md">
+        <CardHeader>
+          <CardTitle size="md">Combined Analysis</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-1 gap-x-3 gap-y-3">
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Primary intent
+              </dt>
+              <dd>
+                <StatusBadge
+                  status=analysis.primaryIntent as any
+                  size="sm"
+                >
+                  {analysis.primaryIntent}
+                </StatusBadge>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Confidence level
+              </dt>
+              <dd>
+                <StatusBadge
+                  status={analysis.confidenceLevel}
+                  size="sm"
+                >
+                  {analysis.confidenceLevel}
+                </StatusBadge>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Requires clarification
+              </dt>
+              <dd>
+                <StatusBadge
+                  status=analysis.requiresClarification ? "lime" : "outline"
+                  size="sm"
+                >
+                  {analysis.requiresClarification ? "Yes" : "No"}
+                </StatusBadge>
+              </dd>
+            </div>
+            {analysis.clarificationQuestion && (
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                  Clarification question
+                </dt>
+                <dd>
+                  <p className="text-sm text-text-muted">{analysis.clarificationQuestion}</p>
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {analysis.entities && analysis.entities.length > 0 && (
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Entities
+              </dt>
+              <dd>
+                {analysis.entities.map((entity: any, idx: number) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs"
+                    style={{ background: "bg-accent-lime/20", color: "text-accent-lime" }}
+                  >
+                    {entity.entity_type}: {entity.value}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  ) : null;
+
+  // Entity types list
+  const entityTypesContent = (
+    <Card variant="outlined" padding="md">
+      <CardHeader>
+        <CardTitle size="md">Entity Types</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2">
+          {ENTITY_TYPES.map((entityType) => (
+            <span
+              key={entityType}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-muted border border-border"
+            >
+              {entityType}
+            </span>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  // Input form
+  const inputContent = (
+    <Card variant="outlined" padding="md">
+      <CardHeader>
+        <CardTitle size="md">Intent Analysis</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Enter a message to analyze intent and extract entities..."
+          className="w-full px-3 py-3 rounded-xl border border-border bg-bg-primary/50 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-lime/50 focus:border-transparent resize-none min-h-[120px]"
+          aria-label="Message input"
+          rows={3}
+        />
+        <div className="mt-4 flex gap-2">
+          <Button
+            variant="lime"
+            size="sm"
+            onClick={handleClassify}
+            disabled={authLoading}
+          >
+            Classify intent
+          </Button>
+          <Button
+            variant="purple"
+            size="sm"
+            onClick={handleAnalyze}
+            disabled={authLoading}
+          >
+            Full analysis
+          </Button>
+          <Button
+            variant="error"
+            size="sm"
+            onClick={handleExtract}
+            disabled={authLoading}
+          >
+            Extract entities
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setText("")}
+            className="px-3 py-1"
+          >
+            Clear
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  if (authLoading) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-accent-lime border-t-transparent" />
+        </div>
+        </DashboardLayout>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+          <div className="text-center p-8">
+            <h2 className="font-heading font-bold text-xl text-text-primary mb-2">
+              SarkarSetu AI
+            </h2>
+            <p className="text-text-muted">
+              Application is ready. Redirecting to dashboard...
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Classification */}
+        <Card variant="outlined" padding="md">
+          <CardHeader>
+            <CardTitle size="md">Intent Classification</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {classificationContent}
+          </CardContent>
+        </Card>
+
+        {/* Full analysis */}
+        <Card variant="outlined" padding="md">
+          <CardHeader>
+            <CardTitle size="md">Full Intent Analysis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {analysisContent}
+          </CardContent>
+        </Card>
+
+        {/* Entity types */}
+        <Card variant="outlined" padding="md">
+          <CardHeader>
+            <CardTitle size="md">Entity Types</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {entityTypesContent}
+          </CardContent>
+        </Card>
+
+        {/* Input form */}
+        <Card variant="outlined" padding="md" lg:col-span-3>
+          <CardHeader>
+            <CardTitle size="md">Analyze Message</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {inputContent}
+          </CardContent>
+        </Card>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+export default IntentPage;

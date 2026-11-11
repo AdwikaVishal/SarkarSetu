@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { api, type MeResponse } from "@/lib/api";
 
 interface AuthContextType {
@@ -11,9 +11,21 @@ interface AuthContextType {
   register: (email: string, password: string, fullName?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** Re-run the initial auth bootstrap (useful when the API was unreachable). */
+  retryAuth: () => Promise<void>;
+  /** True when the app auto-signs-in a demo user instead of showing a login form. */
+  isDevMode: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const DEV_USER = {
+  email: "demo@sarkarsetu.ai",
+  password: "DemoPass123!",
+  full_name: "Demo User"
+};
+
+const isDev = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === "true";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeResponse | null>(null);
@@ -28,30 +40,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const devLogin = useCallback(async (): Promise<MeResponse | null> => {
+    if (!isDev) return null;
+    
+    try {
+      // Try to login first
+      console.log("Dev login: attempting login...");
+      const loginResponse = await api.login({ email: DEV_USER.email, password: DEV_USER.password });
+      console.log("Dev login response:", loginResponse);
+      if (loginResponse.user) {
+        return loginResponse.user;
+      }
+    } catch (err) {
+      console.log("Dev login failed, trying register:", err);
+    }
+    
+    try {
+      console.log("Dev login: attempting register...");
+      const registerResponse = await api.register({ email: DEV_USER.email, password: DEV_USER.password, full_name: DEV_USER.full_name });
+      console.log("Dev register response:", registerResponse);
+      if (registerResponse.user) {
+        return registerResponse.user;
+      }
+      // Fallback to refresh
+      const userData = await api.me();
+      return userData;
+    } catch (err) {
+      console.log("Dev register failed:", err);
+      return null;
+    }
+  }, []);
+
+  // Resolve the current user once: reuse a stored token when it still works,
+  // otherwise fall back to the dev auto-login (which itself creates the demo
+  // account on first run).
+  const loadUser = useCallback(async (): Promise<MeResponse | null> => {
+    let userData: MeResponse | null = null;
+
+    if (api.isAuthenticated()) {
+      try {
+        userData = await api.me();
+      } catch {
+        // Stored access token is stale/unusable; fall through to dev login
+        // instead of leaving the app stuck in its loading state.
+        api.clearTokens();
+      }
+    }
+
+    if (!userData && isDev) {
+      userData = await devLogin();
+    }
+
+    return userData;
+  }, [devLogin]);
+
+  const retryAuth = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      setUser(await loadUser());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadUser]);
+
   useEffect(() => {
     let mounted = true;
-    const initAuth = async () => {
+    (async () => {
       try {
-        let userData: MeResponse | null = null;
-
-        if (api.isAuthenticated()) {
-          try {
-            userData = await api.me();
-          } catch {
-            // Stored access token is stale/unusable; clear and let the user log in.
-            api.clearTokens();
-          }
-        }
-
+        const userData = await loadUser();
         if (mounted) setUser(userData);
       } finally {
         // Always release the loading flag so the UI can render.
         if (mounted) setIsLoading(false);
       }
-    };
-    initAuth();
+    })();
     return () => { mounted = false; };
-  }, [refreshUser]);
+  }, [loadUser]);
 
   const login = async (email: string, password: string) => {
     const response = await api.login({ email, password });
@@ -91,6 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     refreshUser,
+    retryAuth,
+    isDevMode: isDev,
   };
 
   return (

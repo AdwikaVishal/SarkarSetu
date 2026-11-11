@@ -17,7 +17,8 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from app.database.types import GUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -38,7 +39,7 @@ class EligibilityRuleSet(Base):
     __tablename__ = "eligibility_rule_sets"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
@@ -104,7 +105,7 @@ class EligibilityRuleSet(Base):
         nullable=True,
     )
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -113,7 +114,7 @@ class EligibilityRuleSet(Base):
         nullable=False,
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id"),
         nullable=True,
     )
@@ -172,12 +173,12 @@ class EligibilityRule(Base):
     __tablename__ = "eligibility_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
     rule_set_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("eligibility_rule_sets.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -257,7 +258,7 @@ class EligibilityAssessment(Base):
     __tablename__ = "eligibility_assessments"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         primary_key=True,
         default=uuid.uuid4,
     )
@@ -267,19 +268,19 @@ class EligibilityAssessment(Base):
         index=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     business_profile_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("business_profiles.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     rule_set_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("eligibility_rule_sets.id", ondelete="SET NULL"),
         nullable=True,
         index=True,

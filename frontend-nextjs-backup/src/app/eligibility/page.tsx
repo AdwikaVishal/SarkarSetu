@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { api, type BusinessProfileResponse, type EligibilityAssessRequest, type EligibilityAssessmentResponse, type ConditionResult, AssessmentStatus } from "@/lib/api";
 import { ApiError } from "@/lib/api";

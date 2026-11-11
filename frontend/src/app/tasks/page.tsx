@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -7,7 +5,9 @@ import { api, type RoadmapTaskResponse, type TaskStatus } from "@/lib/api";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import { Link, useNavigate } from "react-router-dom";
 import { LoadingState, SkeletonCard } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -142,7 +142,7 @@ function TaskCard({ task, onUpdate, onViewRoadmap }: { task: TaskWithRoadmap; on
 
 function TasksPageContent() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
+  const navigate = useNavigate();
   
   const [allTasks, setAllTasks] = useState<TaskWithRoadmap[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +219,7 @@ function TasksPageContent() {
   };
 
   const handleViewRoadmap = (roadmapId: string) => {
-    router.push(`/roadmap?id=${roadmapId}`);
+    navigate(`/roadmap?id=${roadmapId}`);
   };
 
   useEffect(() => {
@@ -346,7 +346,7 @@ function TasksPageContent() {
             description={allTasks.length === 0 
               ? "Generate a roadmap to create tasks for your compliance journey." 
               : `No ${statusFilter !== "all" ? statusFilter.replace("_", " ") : ""} tasks found.`}
-            action={allTasks.length === 0 ? { label: "Create Roadmap", onClick: () => router.push("/roadmap"), variant: "lime" } : undefined}
+            action={allTasks.length === 0 ? { label: "Create Roadmap", onClick: () => navigate("/roadmap"), variant: "lime" } : undefined}
             alignment="center"
           />
         )}

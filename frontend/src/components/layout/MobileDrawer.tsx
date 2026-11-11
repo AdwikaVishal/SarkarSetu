@@ -1,268 +1,136 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import {
-  Building2,
-  ChevronRight,
-  ClipboardCheck,
-  Compass,
-  FolderOpen,
-  History,
-  LayoutDashboard,
-  ListChecks,
-  LogOut,
-  MessageSquare,
+import { 
+  LayoutDashboard, 
+  MessageSquare, 
+  Target, 
+  FileText, 
+  ClipboardCheck, 
+  Sparkles, 
+  ListTodo, 
+  Building2, 
   Settings,
-  Sparkles,
-  Target,
+  Activity,
   X,
-  type LucideIcon,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "../ui/Button";
+import { LogOut } from "lucide-react";
 
-interface DrawerLink {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-const groups: Array<{ label: string; links: DrawerLink[] }> = [
-  {
-    label: "Workspace",
-    links: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/profile", label: "My Business", icon: Building2 },
-      { href: "/assistant", label: "AI Assistant", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "Discover",
-    links: [
-      { href: "/schemes", label: "Scheme Discovery", icon: Compass },
-      { href: "/recommendations", label: "Recommendations", icon: Sparkles },
-      { href: "/eligibility", label: "Eligibility Checker", icon: ClipboardCheck },
-    ],
-  },
-  {
-    label: "Manage",
-    links: [
-      { href: "/documents", label: "Document Centre", icon: FolderOpen },
-      { href: "/roadmap", label: "Action Roadmap", icon: Target },
-      { href: "/tasks", label: "My Tasks", icon: ListChecks },
-      { href: "/activity", label: "Activity History", icon: History },
-    ],
-  },
-  {
-    label: "Preferences",
-    links: [{ href: "/settings", label: "Settings", icon: Settings }],
-  },
+const navigation = [
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "AI Assistant", href: "/assistant", icon: MessageSquare },
+  { name: "Eligibility", href: "/eligibility", icon: Target },
+  { name: "Documents", href: "/documents", icon: FileText },
+  { name: "Roadmaps", href: "/roadmap", icon: ListTodo },
+  { name: "Tasks", href: "/tasks", icon: ClipboardCheck },
+  { name: "Schemes", href: "/schemes", icon: Sparkles },
+  { name: "Activity", href: "/activity", icon: Activity },
+  { name: "Profile", href: "/profile", icon: Building2 },
+  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function MobileDrawer({
-  open,
-  onClose,
-  userName,
-  email,
-  onLogout,
-  menuTriggerRef,
-}: {
-  open: boolean;
+interface MobileDrawerProps {
+  isOpen: boolean;
   onClose: () => void;
-  userName?: string;
-  email?: string;
-  onLogout?: () => void | Promise<void>;
-  menuTriggerRef?: React.RefObject<HTMLButtonElement>;
-}) {
-  const pathname = usePathname();
-  const panelRef = useRef<HTMLElement>(null);
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+}
 
-  // Clear pending close timeout on unmount.
+export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
+  const location = useLocation();
+  const { user, logout } = useAuth();
+
   useEffect(() => {
-    return () => {
-      if (closeTimeoutRef.current) {
-        clearTimeout(closeTimeoutRef.current);
-      }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
     };
-  }, []);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
 
-  // Close handler that returns focus to the menu trigger after the drawer hides.
-  const handleClose = useCallback(() => {
-    // Move focus to the menu trigger BEFORE closing so focus is already
-    // outside the drawer when aria-hidden is applied. This prevents the
-    // "Blocked aria-hidden on an element because its descendant retained focus" error.
-    if (menuTriggerRef?.current) {
-      menuTriggerRef.current.focus();
-    }
-    onClose();
-  }, [onClose, menuTriggerRef]);
-
-  // Close when the route changes.
-  useEffect(() => {
-    handleClose();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
-
-  // Move focus into the drawer panel when opened.
-  useEffect(() => {
-    if (!open || !panelRef.current) return;
-    panelRef.current.focus();
-  }, [open]);
-
-  // Lock page scroll while the drawer is open.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-
-  // Escape closes the drawer.
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") handleClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose, handleClose]);
+  if (!isOpen) return null;
 
   return (
-    <div
-      id="mobile-drawer"
-      className={cn(
-        "fixed inset-0 z-50 lg:hidden",
-        open ? "visible" : "invisible pointer-events-none"
-      )}
-      aria-hidden={!open}
-    >
-      {/* Backdrop */}
-      <div
-        className={cn(
-          "absolute inset-0 bg-text-primary/30 backdrop-blur-sm transition-opacity duration-300",
-          open ? "opacity-100" : "opacity-0"
-        )}
-        onClick={handleClose}
+    <>
+      <div 
+        className="fixed inset-0 z-40 bg-black/50 lg:hidden animate-fade-in"
+        onClick={onClose}
         aria-hidden="true"
-        inert={!open}
       />
 
-      {/* Panel */}
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal={open}
-        aria-label="Navigation menu"
-        aria-hidden={!open}
-        tabIndex={-1}
-        className={cn(
-          "absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col bg-bg-elevated shadow-xl transition-transform duration-300 ease-out",
-          open ? "translate-x-0" : "-translate-x-full"
-        )}
-        inert={!open}
-      >
-        <div className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border px-4">
-          <Link
-            href="/dashboard"
-            onClick={onClose}
-            className="flex min-w-0 items-center gap-2.5"
-          >
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-deep-rose">
-              <Sparkles className="h-5 w-5 text-white" aria-hidden="true" />
-            </span>
-            <span className="truncate font-heading text-base font-bold text-text-primary">
-              SarkarSetu AI
-            </span>
-          </Link>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary"
-            aria-label="Close navigation menu"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-
-        <nav aria-label="Primary" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-          {groups.map((group) => (
-            <div key={group.label} className="mb-4">
-              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                {group.label}
-              </p>
-              <ul className="flex flex-col gap-1">
-                {group.links.map((link) => {
-                  const active =
-                    pathname === link.href ||
-                    (link.href !== "/dashboard" && pathname.startsWith(`${link.href}/`));
-                  const Icon = link.icon;
-                  return (
-                    <li key={link.href}>
-                      <Link
-                        href={link.href}
-                        onClick={handleClose}
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                          active
-                            ? "bg-deep-rose/15 text-text-primary"
-                            : "text-text-muted hover:bg-bg-primary hover:text-text-primary"
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            "h-[18px] w-[18px] flex-shrink-0",
-                            active ? "text-deep-rose" : "text-text-muted"
-                          )}
-                          aria-hidden="true"
-                        />
-                        <span className="truncate">{link.label}</span>
-                        {active && (
-                          <ChevronRight className="ml-auto h-4 w-4 text-deep-rose" aria-hidden="true" />
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+      <aside className="fixed inset-y-0 left-0 z-50 w-72 max-w-[85%] bg-bg-elevated border-r border-border lg:hidden animate-slide-in">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-accent-lime flex items-center justify-center">
+              <svg className="w-5 h-5 text-text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
             </div>
-          ))}
-        </nav>
-
-        <div className="flex-shrink-0 border-t border-border p-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-light-lavender text-xs font-semibold text-text-primary">
-              {(userName || "U")
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part[0]?.toUpperCase())
-                .join("") || "U"}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-text-primary">
-                {userName || "Account"}
-              </p>
-              {email && <p className="truncate text-xs text-text-muted">{email}</p>}
-            </div>
+            <span className="font-heading font-bold text-xl text-text-primary">SarkarSetu</span>
           </div>
           <button
-            type="button"
-            onClick={async () => {
-              onClose();
-              await onLogout?.();
-            }}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-medium text-error transition-colors hover:bg-error/10"
+            onClick={onClose}
+            className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-card transition-colors lg:hidden"
+            aria-label="Close menu"
           >
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-            Sign out
+            <X className="w-6 h-6" aria-hidden="true" />
           </button>
         </div>
+
+        <nav className="p-4 space-y-1 overflow-y-auto flex-1" aria-label="Mobile navigation">
+          {navigation.map((item) => {
+            const isActive = location.pathname === item.href || 
+              (item.href !== "/dashboard" && location.pathname.startsWith(item.href));
+            
+            const Icon = item.icon;
+            
+            return (
+              <NavLink
+                key={item.name}
+                to={item.href}
+                onClick={onClose}
+                className={({ isActive: active }) => cn(
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-accent-lime/10 text-text-primary border border-accent-lime/20"
+                    : "text-text-muted hover:bg-bg-card hover:text-text-primary"
+                )}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <Icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-accent-lime")} aria-hidden="true" />
+                <span>{item.name}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="p-4 border-t border-border">
+          <div className="flex items-center gap-3 p-2 rounded-xl bg-bg-card mb-3">
+            <div className="w-8 h-8 rounded-full bg-accent-lime/10 flex items-center justify-center">
+              <Building2 className="w-4 h-4 text-accent-lime" aria-hidden="true" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm text-text-primary truncate">
+                {user?.full_name || user?.email || "User"}
+              </p>
+              <p className="text-xs text-text-muted truncate">{user?.email}</p>
+            </div>
+          </div>
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            fullWidth
+            className="justify-start"
+            leftIcon={<LogOut className="w-4 h-4" />}
+            onClick={() => { logout(); onClose(); }}
+          >
+            Sign Out
+          </Button>
+        </div>
       </aside>
-    </div>
+    </>
   );
 }

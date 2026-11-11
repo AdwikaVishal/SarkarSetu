@@ -275,6 +275,7 @@ export interface ConversationStatusResponse {
 // ============================================================================
 
 export interface EligibilityAssessRequest {
+  user_id: string;
   business_profile_id: string;
   scheme_name: string;
   registration_type: string;

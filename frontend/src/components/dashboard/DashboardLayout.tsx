@@ -1,155 +1,81 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Topbar } from "@/components/layout/Topbar";
-import { MobileDrawer } from "@/components/layout/MobileDrawer";
-import { useAuth } from "@/context/AuthContext";
-import { LoadingState } from "@/components/ui/LoadingState";
-import { Button } from "@/components/ui/Button";
+import { useState, useEffect } from "react";
+import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { MobileDrawer } from "@/components/layout/MobileDrawer";
+import { Topbar } from "@/components/layout/Topbar";
+import { Navbar } from "@/components/layout/Navbar";
+import { useAuth } from "@/context/AuthContext";
 
-const PAGE_META: Record<string, { title: string; breadcrumb?: string }> = {
-  "/dashboard": { title: "Dashboard" },
-  "/assistant": { title: "AI Assistant" },
-  "/profile": { title: "Business Profile" },
-  "/schemes": { title: "Scheme Discovery" },
-  "/recommendations": { title: "Recommendations" },
-  "/eligibility": { title: "Eligibility Checker" },
-  "/documents": { title: "Document Centre" },
-  "/roadmap": { title: "Action Roadmap" },
-  "/tasks": { title: "My Tasks" },
-  "/activity": { title: "Activity History" },
-  "/settings": { title: "Settings" },
-};
-
-export function getPageMeta(pathname: string) {
-  const base = `/${pathname.split("/").filter(Boolean)[0] ?? ""}`;
-  return PAGE_META[base] ?? { title: "SarkarSetu AI" };
+interface DashboardLayoutProps {
+  children: ReactNode;
 }
 
-/**
- * The one and only authenticated application shell.
- *
- * Desktop:  [ Sidebar 250px | Topbar + page content ]  via CSS grid, so the
- *           sidebar participates in layout and can never overlap the content.
- * Mobile:   the sidebar is removed from the grid and rendered as a drawer.
- *
- * The shell owns the only Topbar/Sidebar instances; pages render content only.
- */
-export function DashboardLayout({ children }: { children: ReactNode }) {
-  const { user, logout, isLoading: authLoading } = useAuth();
-  const pathname = usePathname();
-  const router = useRouter();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { isLoading, isAuthenticated } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  const meta = getPageMeta(pathname);
-
-  // Close the mobile drawer whenever the route changes.
+  // Close mobile drawer on route change
   useEffect(() => {
-    setDrawerOpen(false);
-  }, [pathname]);
+    setMobileDrawerOpen(false);
+  }, [window.location.pathname]);
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/");
-  };
-
-  if (authLoading) {
-    return <ShellMessage title="Loading your workspace" loading />;
-  }
-
-  if (!user) {
+  if (isLoading) {
     return (
-      <ShellMessage
-        title="Sign in required"
-        description="Please sign in to access your SarkarSetu workspace."
-        onSignIn={() => router.replace("/login")}
-      />
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-accent-lime border-t-transparent" />
+      </div>
     );
   }
 
-  const displayName = user.full_name || user.email?.split("@")[0] || "Account";
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+        <div className="text-center p-8">
+          <div className="w-16 h-16 rounded-full bg-accent-lime/10 flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8 text-accent-lime" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="font-heading font-bold text-xl text-text-primary mb-2">Please sign in</h2>
+          <p className="text-text-muted">You need to be authenticated to access this page.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn(
-        "min-h-dvh bg-bg-primary lg:grid",
-        collapsed
-          ? "lg:grid-cols-[76px_minmax(0,1fr)]"
-          : "lg:grid-cols-[250px_minmax(0,1fr)]"
-      )}
-    >
-      <Sidebar
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed((value) => !value)}
+    <div className="min-h-screen bg-bg-primary flex">
+      {/* Mobile Drawer */}
+      <MobileDrawer
+        isOpen={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
       />
 
-      <div className="flex min-h-dvh min-w-0 flex-col">
-        <Topbar
-          title={meta.title}
-          breadcrumb="SarkarSetu"
-          showSearch={false}
-          userName={displayName}
-          email={user.email}
-          onOpenMenu={() => setDrawerOpen(true)}
-          onLogout={handleLogout}
-          menuTriggerRef={menuTriggerRef}
+      {/* Sidebar - hidden on mobile, shown on lg+ */}
+      <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:left-0 lg:z-40">
+        <Sidebar onClose={() => setSidebarOpen(false)} />
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex flex-col flex-1 lg:ml-64 min-w-0">
+        {/* Topbar - shown on mobile only */}
+        <Topbar 
+          onMenuClick={() => setMobileDrawerOpen(true)} 
+          className="lg:hidden"
         />
 
-        <main id="main-content" className="min-w-0 flex-1">
-          <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-            {children}
-          </div>
+        {/* Page Content */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8 min-h-[calc(100vh-5rem)] lg:min-h-[calc(100vh-4rem)]">
+          {children}
         </main>
       </div>
-
-      <MobileDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        userName={displayName}
-        email={user.email}
-        onLogout={handleLogout}
-        menuTriggerRef={menuTriggerRef}
-      />
     </div>
   );
 }
 
-function ShellMessage({
-  title,
-  description,
-  loading = false,
-  onSignIn,
-}: {
-  title: string;
-  description?: string;
-  loading?: boolean;
-  onSignIn?: () => void;
-}) {
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-bg-primary px-6">
-      <div className="flex max-w-sm flex-col items-center text-center">
-        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-deep-rose/15">
-          <span className="h-6 w-6 rounded-full bg-deep-rose" aria-hidden="true" />
-        </div>
-        <h1 className="font-heading text-xl font-bold text-text-primary">{title}</h1>
-        {description && <p className="mt-2 text-sm text-text-muted">{description}</p>}
-        {onSignIn && (
-          <Button
-            variant="lime"
-            size="md"
-            onClick={onSignIn}
-            className="mt-5 w-full sm:w-auto"
-          >
-            Sign in
-          </Button>
-        )}
-        {loading && <LoadingState variant="dots" size="md" className="mt-5" />}
-      </div>
-    </div>
-  );
-}
+// Also export Navbar for landing page
+export { Navbar } from "@/components/layout/Navbar";

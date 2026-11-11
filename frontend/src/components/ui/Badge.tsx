@@ -4,19 +4,19 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: "default" | "lime" | "purple" | "success" | "warning" | "error" | "outline";
+  variant?: "default" | "success" | "warning" | "error" | "outline" | "lime" | "purple";
   size?: "sm" | "md" | "lg";
   dot?: boolean;
 }
 
 const variants = {
-  default: "bg-text-primary text-text-inverse",
-  lime: "bg-accent-lime text-text-primary",
-  purple: "bg-accent-purple text-text-inverse",
-  success: "bg-success text-text-inverse",
-  warning: "bg-warning text-text-primary",
-  error: "bg-error text-text-inverse",
-  outline: "border-2 border-border bg-transparent text-text-primary",
+  default: "bg-bg-dark text-text-inverse",
+  success: "bg-success-light text-success",
+  warning: "bg-warning/10 text-warning",
+  error: "bg-error/10 text-error",
+  outline: "border-2 border-border text-text-muted",
+  lime: "bg-accent-lime/10 text-accent-lime",
+  purple: "bg-accent-purple/10 text-accent-purple",
 };
 
 const sizes = {
@@ -31,27 +31,14 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
       <span
         ref={ref}
         className={cn(
-          "inline-flex items-center gap-1.5 font-heading font-medium rounded-full",
+          "inline-flex items-center gap-1.5 font-medium rounded-full",
           variants[variant],
           sizes[size],
           className
         )}
         {...props}
       >
-        {dot && (
-          <span
-            className={cn(
-              "w-1.5 h-1.5 rounded-full",
-              variant === "lime" && "bg-text-primary",
-              variant === "purple" && "bg-text-inverse",
-              variant === "default" && "bg-text-inverse",
-              variant === "success" && "bg-text-inverse",
-              variant === "warning" && "bg-text-primary",
-              variant === "error" && "bg-text-inverse",
-              variant === "outline" && "bg-text-primary"
-            )}
-          />
-        )}
+        {dot && <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />}
         {children}
       </span>
     );

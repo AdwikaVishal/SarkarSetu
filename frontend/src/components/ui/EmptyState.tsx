@@ -1,11 +1,11 @@
 "use client";
 
-import { type ReactNode, type ComponentType, isValidElementType } from "react";
+import { type ReactNode, type ComponentType, type ElementType, isValidElement } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./Button";
 
 export interface EmptyStateProps {
-  icon: ReactNode | ComponentType<{ className?: string }>;
+  icon: ReactNode | ElementType<{ className?: string }>;
   title: string;
   description: string;
   action?: {
@@ -30,13 +30,13 @@ export function EmptyState({
     if (icon == null) return null;
     
     // If it's a valid React component type (function/class/ForwardRefExoticComponent)
-    if (isValidElementType(icon)) {
-      const IconComponent = icon;
+    if (typeof icon === "function" || (typeof icon === "object" && icon !== null && "$$typeof" in icon)) {
+      const IconComponent = icon as ElementType<{ className?: string }>;
       return <IconComponent className="w-8 h-8" />;
     }
     
     // If it's already a React element, render it directly
-    if (typeof icon === "object" && icon !== null && "$$typeof" in icon) {
+    if (isValidElement(icon)) {
       return icon;
     }
     
